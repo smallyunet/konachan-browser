@@ -62,9 +62,16 @@ function App() {
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const sentinelRef = useRef(null)
+  const requestGenerationRef = useRef(0)
 
   const fetchPosts = useCallback(async (nextPage, replace = false) => {
     if (view === 'favorites') return
+    const generation = replace ? requestGenerationRef.current + 1 : requestGenerationRef.current
+    if (replace) {
+      requestGenerationRef.current = generation
+      setPosts([])
+      setHasMore(true)
+    }
     setLoading(true)
     setError('')
 
@@ -73,20 +80,23 @@ function App() {
         page: String(nextPage),
         limit: '36',
         sort: view,
+        aspect,
       })
       if (activeQuery) params.set('tags', activeQuery)
 
       const response = await fetch(`${API_BASE}/posts?${params}`)
       if (!response.ok) throw new Error(`Request failed with ${response.status}`)
       const data = await response.json()
+      if (generation !== requestGenerationRef.current) return
       setPosts(current => replace ? data.posts : [...current, ...data.posts])
       setHasMore(data.posts.length > 0 && data.hasMore)
     } catch {
+      if (generation !== requestGenerationRef.current) return
       setError('KonaView could not reach the image service. Please try again in a moment.')
     } finally {
-      setLoading(false)
+      if (generation === requestGenerationRef.current) setLoading(false)
     }
-  }, [activeQuery, view])
+  }, [activeQuery, aspect, view])
 
   useEffect(() => {
     if (view === 'favorites') return
@@ -299,7 +309,13 @@ function App() {
           </div>
         )}
 
-        {loading && (
+        {loading && visiblePosts.length === 0 && (
+          <section className={`skeleton-grid ${aspect}`} aria-label={`Loading ${aspect} wallpapers`} aria-busy="true">
+            {Array.from({ length: 12 }, (_, index) => <span key={index}></span>)}
+          </section>
+        )}
+
+        {loading && visiblePosts.length > 0 && (
           <div className="loading-row" role="status">
             <span className="spinner"></span> Loading more artwork…
           </div>

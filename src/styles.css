@@ -438,6 +438,30 @@ h1 em { color: #aaa4bb; font-weight: 400; }
   color: var(--text-muted);
 }
 
+.skeleton-grid {
+  padding-top: 30px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.skeleton-grid span {
+  aspect-ratio: 3 / 4;
+  border-radius: 16px;
+  background: linear-gradient(105deg, rgba(255, 255, 255, 0.035) 35%, rgba(255, 255, 255, 0.075) 48%, rgba(255, 255, 255, 0.035) 61%);
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-grid.all span:nth-child(3n + 1),
+.skeleton-grid.landscape span { aspect-ratio: 16 / 10; }
+.skeleton-grid.ultrawide span { aspect-ratio: 16 / 7; }
+
+@keyframes skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
 .spinner {
   width: 18px;
   height: 18px;
@@ -555,6 +579,7 @@ footer {
 
 @media (max-width: 1120px) {
   .masonry { column-count: 3; }
+  .skeleton-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .topbar { grid-template-columns: auto 1fr auto; }
   .lightbox-panel { grid-template-columns: 1fr; overflow-y: auto; }
   .lightbox-meta { border-top: 1px solid var(--line); border-left: 0; }
@@ -577,6 +602,7 @@ footer {
   .view-tabs { min-height: 58px; gap: 20px; overflow-x: auto; }
   .format-filter { min-height: 52px; justify-content: flex-end; border-top: 1px solid var(--line); }
   .masonry { padding-top: 14px; column-count: 2; column-gap: 10px; }
+  .skeleton-grid { padding-top: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .wallpaper-card { margin-bottom: 10px; border-radius: 11px; }
   .card-copy, .resolution { display: none; }
   .seen-badge { top: 8px; right: 8px; }

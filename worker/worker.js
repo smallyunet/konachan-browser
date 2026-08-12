@@ -9,6 +9,13 @@ const ALLOWED_SORTS = new Map([
   ['latest', ''],
   ['popular', 'order:score'],
 ])
+const ALLOWED_ASPECTS = new Set(['all', 'landscape', 'portrait', 'ultrawide'])
+const UPSTREAM_LIMITS = {
+  all: 36,
+  landscape: 80,
+  portrait: 240,
+  ultrawide: 120,
+}
 
 function corsHeaders(request) {
   const origin = request.headers.get('Origin') || ''
@@ -62,6 +69,16 @@ function normalizePost(post) {
   }
 }
 
+function matchesAspect(post, aspect) {
+  if (aspect === 'all') return true
+  const ratio = Number(post.width) / Number(post.height)
+  if (!Number.isFinite(ratio)) return false
+  if (aspect === 'landscape') return ratio >= 1.2
+  if (aspect === 'portrait') return ratio < 0.9
+  if (aspect === 'ultrawide') return ratio >= 1.75
+  return true
+}
+
 export default {
   async fetch(request) {
     if (request.method === 'OPTIONS') {
@@ -86,12 +103,15 @@ export default {
     const page = Number.isFinite(parsedPage) ? Math.min(Math.max(parsedPage, 1), 1000) : 1
     const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 60) : 36
     const sort = ALLOWED_SORTS.get(url.searchParams.get('sort') || 'latest') ?? ''
+    const requestedAspect = url.searchParams.get('aspect') || 'all'
+    const aspect = ALLOWED_ASPECTS.has(requestedAspect) ? requestedAspect : 'all'
+    const upstreamLimit = aspect === 'all' ? limit : UPSTREAM_LIMITS[aspect]
     const userTags = cleanTags(url.searchParams.get('tags') || '')
     const tags = [...userTags, 'rating:safe', sort].filter(Boolean).join(' ')
 
     const upstreamUrl = new URL(UPSTREAM)
     upstreamUrl.searchParams.set('page', String(page))
-    upstreamUrl.searchParams.set('limit', String(limit))
+    upstreamUrl.searchParams.set('limit', String(upstreamLimit))
     upstreamUrl.searchParams.set('tags', tags)
 
     try {
@@ -106,13 +126,18 @@ export default {
 
       const posts = await response.json()
       const safePosts = Array.isArray(posts)
-        ? posts.filter(post => post.rating === 's' && post.status !== 'pending' && post.is_shown_in_index !== false)
+        ? posts.filter(post => (
+          post.rating === 's'
+          && post.status !== 'pending'
+          && post.is_shown_in_index !== false
+          && matchesAspect(post, aspect)
+        ))
         : []
 
       return json(request, {
         posts: safePosts.map(normalizePost),
         page,
-        hasMore: posts.length >= limit,
+        hasMore: safePosts.length > 0 && posts.length >= upstreamLimit,
       }, 200, 'public, max-age=60, s-maxage=180, stale-while-revalidate=600')
     } catch {
       return json(request, { error: 'Image service unavailable' }, 503)
