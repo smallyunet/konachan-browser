@@ -8,6 +8,7 @@ const UPSTREAM = 'https://konachan.net/post.json'
 const ALLOWED_SORTS = new Map([
   ['latest', ''],
   ['popular', 'order:score'],
+  ['random', 'order:random'],
 ])
 const ALLOWED_ASPECTS = new Set(['all', 'landscape', 'portrait', 'ultrawide'])
 const UPSTREAM_LIMITS = {
@@ -103,6 +104,7 @@ export default {
     const page = Number.isFinite(parsedPage) ? Math.min(Math.max(parsedPage, 1), 1000) : 1
     const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 60) : 36
     const sort = ALLOWED_SORTS.get(url.searchParams.get('sort') || 'latest') ?? ''
+    const isRandom = sort === 'order:random'
     const requestedAspect = url.searchParams.get('aspect') || 'all'
     const aspect = ALLOWED_ASPECTS.has(requestedAspect) ? requestedAspect : 'all'
     const upstreamLimit = aspect === 'all' ? limit : UPSTREAM_LIMITS[aspect]
@@ -115,10 +117,13 @@ export default {
     upstreamUrl.searchParams.set('tags', tags)
 
     try {
-      const response = await fetch(upstreamUrl, {
-        headers: { 'User-Agent': 'KonaView/0.1 (+https://github.com/smallyunet/konachan-browser)' },
-        cf: { cacheEverything: true, cacheTtl: sort === 'order:score' ? 900 : 180 },
-      })
+      const fetchOptions = {
+        headers: { 'User-Agent': 'KonaView/0.1 (+https://github.com/smallyunet/konaview)' },
+      }
+      if (!isRandom) {
+        fetchOptions.cf = { cacheEverything: true, cacheTtl: sort === 'order:score' ? 900 : 180 }
+      }
+      const response = await fetch(upstreamUrl, fetchOptions)
 
       if (!response.ok) {
         return json(request, { error: 'Upstream request failed' }, 502)
@@ -138,7 +143,7 @@ export default {
         posts: safePosts.map(normalizePost),
         page,
         hasMore: safePosts.length > 0 && posts.length >= upstreamLimit,
-      }, 200, 'public, max-age=60, s-maxage=180, stale-while-revalidate=600')
+      }, 200, isRandom ? 'no-store' : 'public, max-age=60, s-maxage=180, stale-while-revalidate=600')
     } catch {
       return json(request, { error: 'Image service unavailable' }, 503)
     }

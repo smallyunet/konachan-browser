@@ -9,6 +9,7 @@ import {
   Heart,
   Image as ImageIcon,
   Search,
+  Shuffle,
   SlidersHorizontal,
   Sparkles,
   X,
@@ -21,6 +22,7 @@ const SEEN_KEY = 'konaview:seen'
 const views = [
   { id: 'latest', label: 'Latest' },
   { id: 'popular', label: 'Popular' },
+  { id: 'random', label: 'Random' },
   { id: 'favorites', label: 'Favorites' },
 ]
 
@@ -61,6 +63,7 @@ function App() {
   const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
+  const [randomKey, setRandomKey] = useState(0)
   const sentinelRef = useRef(null)
   const requestGenerationRef = useRef(0)
 
@@ -83,6 +86,7 @@ function App() {
         aspect,
       })
       if (activeQuery) params.set('tags', activeQuery)
+      if (view === 'random') params.set('shuffle', String(randomKey))
 
       const response = await fetch(`${API_BASE}/posts?${params}`)
       if (!response.ok) throw new Error(`Request failed with ${response.status}`)
@@ -101,7 +105,7 @@ function App() {
     } finally {
       if (generation === requestGenerationRef.current) setLoading(false)
     }
-  }, [activeQuery, aspect, view])
+  }, [activeQuery, aspect, randomKey, view])
 
   useEffect(() => {
     if (view === 'favorites') return
@@ -250,8 +254,16 @@ function App() {
                 role="tab"
                 aria-selected={view === item.id}
                 className={view === item.id ? 'active' : ''}
-                onClick={() => setView(item.id)}
+                onClick={() => {
+                  if (item.id === 'random' && view === 'random') {
+                    setRandomKey(current => current + 1)
+                    return
+                  }
+                  setView(item.id)
+                }}
+                aria-label={item.id === 'random' && view === 'random' ? 'Random, shuffle again' : item.label}
               >
+                {item.id === 'random' && <Shuffle size={15} />}
                 {item.id === 'favorites' && <Heart size={15} />}
                 {item.label}
                 {item.id === 'favorites' && favorites.length > 0 && <span className="count">{favorites.length}</span>}
