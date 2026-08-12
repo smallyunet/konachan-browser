@@ -53,7 +53,7 @@ function App() {
   const [aspect, setAspect] = useState('all')
   const [query, setQuery] = useState('')
   const [activeQuery, setActiveQuery] = useState('')
-  const [posts, setPosts] = useState([])
+  const [postBatches, setPostBatches] = useState([])
   const [favorites, setFavorites] = useState(readFavorites)
   const [seenIds, setSeenIds] = useState(readSeen)
   const [page, setPage] = useState(1)
@@ -69,7 +69,7 @@ function App() {
     const generation = replace ? requestGenerationRef.current + 1 : requestGenerationRef.current
     if (replace) {
       requestGenerationRef.current = generation
-      setPosts([])
+      setPostBatches([])
       setHasMore(true)
     }
     setLoading(true)
@@ -88,7 +88,12 @@ function App() {
       if (!response.ok) throw new Error(`Request failed with ${response.status}`)
       const data = await response.json()
       if (generation !== requestGenerationRef.current) return
-      setPosts(current => replace ? data.posts : [...current, ...data.posts])
+      setPostBatches(current => {
+        if (replace) return data.posts.length > 0 ? [data.posts] : []
+        const existingIds = new Set(current.flatMap(batch => batch.map(post => post.id)))
+        const nextBatch = data.posts.filter(post => !existingIds.has(post.id))
+        return nextBatch.length > 0 ? [...current, nextBatch] : current
+      })
       setHasMore(data.posts.length > 0 && data.hasMore)
     } catch {
       if (generation !== requestGenerationRef.current) return
@@ -125,7 +130,10 @@ function App() {
     localStorage.setItem(SEEN_KEY, JSON.stringify(seenIds))
   }, [seenIds])
 
-  const sourcePosts = view === 'favorites' ? favorites : posts
+  const sourcePosts = useMemo(
+    () => view === 'favorites' ? favorites : postBatches.flat(),
+    [favorites, postBatches, view],
+  )
   const visiblePosts = useMemo(() => sourcePosts.filter(post => {
     const ratio = post.width / post.height
     if (aspect === 'landscape') return ratio >= 1.2
@@ -133,6 +141,13 @@ function App() {
     if (aspect === 'ultrawide') return ratio >= 1.75
     return true
   }), [aspect, sourcePosts])
+  const visiblePostIds = useMemo(() => new Set(visiblePosts.map(post => post.id)), [visiblePosts])
+  const visibleBatches = useMemo(() => {
+    if (view === 'favorites') return visiblePosts.length > 0 ? [visiblePosts] : []
+    return postBatches
+      .map(batch => batch.filter(post => visiblePostIds.has(post.id)))
+      .filter(batch => batch.length > 0)
+  }, [postBatches, view, visiblePostIds, visiblePosts])
 
   const selectedIndex = visiblePosts.findIndex(post => post.id === selectedId)
   const selectedPost = selectedIndex >= 0 ? visiblePosts[selectedIndex] : null
@@ -264,8 +279,10 @@ function App() {
         )}
 
         {!error && visiblePosts.length > 0 && (
-          <section className="masonry" aria-live="polite" aria-label="Wallpaper gallery">
-            {visiblePosts.map(post => (
+          <div className="gallery-batches" aria-live="polite" aria-label="Wallpaper gallery">
+            {visibleBatches.map((batch, batchIndex) => (
+              <section className="masonry" key={`${view}-${aspect}-${activeQuery}-${batchIndex}`} aria-label={`Wallpaper batch ${batchIndex + 1}`}>
+                {batch.map(post => (
               <article className={`wallpaper-card ${seenSet.has(post.id) ? 'seen' : ''}`} key={post.id}>
                 <button
                   type="button"
@@ -297,8 +314,10 @@ function App() {
                   <Heart size={17} fill="currentColor" />
                 </button>
               </article>
+                ))}
+              </section>
             ))}
-          </section>
+          </div>
         )}
 
         {!loading && !error && visiblePosts.length === 0 && (

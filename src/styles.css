@@ -307,6 +307,11 @@ h1 em { color: #aaa4bb; font-weight: 400; }
   column-gap: 18px;
 }
 
+.gallery-batches .masonry + .masonry {
+  padding-top: 0;
+  margin-top: 18px;
+}
+
 .wallpaper-card {
   position: relative;
   margin: 0 0 18px;
@@ -602,6 +607,7 @@ footer {
   .view-tabs { min-height: 58px; gap: 20px; overflow-x: auto; }
   .format-filter { min-height: 52px; justify-content: flex-end; border-top: 1px solid var(--line); }
   .masonry { padding-top: 14px; column-count: 2; column-gap: 10px; }
+  .gallery-batches .masonry + .masonry { margin-top: 10px; }
   .skeleton-grid { padding-top: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .wallpaper-card { margin-bottom: 10px; border-radius: 11px; }
   .card-copy, .resolution { display: none; }
