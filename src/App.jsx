@@ -11,6 +11,7 @@ import {
   Grid2X2,
   Heart,
   Image as ImageIcon,
+  Info,
   Search,
   Shuffle,
   SlidersHorizontal,
@@ -26,6 +27,7 @@ const FAVORITES_KEY = 'konaview:favorites'
 const SEEN_KEY = 'konaview:seen'
 const HIDE_SEEN_KEY = 'konaview:hide-seen'
 const HOVER_PREVIEW_KEY = 'konaview:hover-preview'
+const CARD_DETAILS_KEY = 'konaview:card-details'
 const SEEN_HISTORY_LIMIT = 20_000
 
 const views = [
@@ -89,6 +91,14 @@ function readHoverPreview() {
   }
 }
 
+function readCardDetails() {
+  try {
+    return localStorage.getItem(CARD_DETAILS_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 function positionHoverPreview(event) {
   const card = event.currentTarget
   const bounds = card.getBoundingClientRect()
@@ -143,7 +153,8 @@ function App() {
   const [seenIds, setSeenIds] = useState(readSeen)
   const [hideSeen, setHideSeen] = useState(readHideSeen)
   const [hoverPreview, setHoverPreview] = useState(readHoverPreview)
-  const [seenFilterBaseline, setSeenFilterBaseline] = useState(null)
+  const [showCardDetails, setShowCardDetails] = useState(readCardDetails)
+  const [seenFilterBaseline, setSeenFilterBaseline] = useState(readSeen)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
@@ -207,9 +218,13 @@ function App() {
 
   useEffect(() => {
     if (view === 'favorites' || view === 'tags') return
+    setSeenFilterBaseline(seenIds)
     setPage(1)
     setHasMore(true)
     fetchPosts(1, true)
+    // Refresh the seen snapshot only when the list context changes. Newly seen
+    // cards stay in place for the rest of the current browsing session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchPosts, view])
 
   useEffect(() => {
@@ -269,6 +284,10 @@ function App() {
     localStorage.setItem(HOVER_PREVIEW_KEY, String(hoverPreview))
   }, [hoverPreview])
 
+  useEffect(() => {
+    localStorage.setItem(CARD_DETAILS_KEY, String(showCardDetails))
+  }, [showCardDetails])
+
   const sourcePosts = useMemo(
     () => view === 'favorites' ? favorites : postBatches.flat(),
     [favorites, postBatches, view],
@@ -282,8 +301,8 @@ function App() {
   }), [aspect, sourcePosts])
   const seenSet = useMemo(() => new Set(seenIds), [seenIds])
   const filteredSeenSet = useMemo(
-    () => new Set(seenFilterBaseline ?? seenIds),
-    [seenFilterBaseline, seenIds],
+    () => new Set(seenFilterBaseline),
+    [seenFilterBaseline],
   )
   const visiblePosts = useMemo(
     () => view === 'favorites' || !hideSeen
@@ -305,15 +324,16 @@ function App() {
   const selectedIndex = visiblePosts.findIndex(post => post.id === selectedId)
   const selectedPost = selectedIndex >= 0 ? visiblePosts[selectedIndex] : null
 
-  const openViewer = postId => {
-    setSeenFilterBaseline(seenIds)
-    setSelectedId(postId)
-  }
+  const openViewer = postId => setSelectedId(postId)
 
   const closeViewer = useCallback(() => {
     setSelectedId(null)
-    setSeenFilterBaseline(null)
   }, [])
+
+  const toggleHideSeen = () => {
+    if (!hideSeen) setSeenFilterBaseline(seenIds)
+    setHideSeen(current => !current)
+  }
 
   useEffect(() => {
     const token = query.trim().split(/\s+/).at(-1) || ''
@@ -578,7 +598,7 @@ function App() {
                 type="button"
                 className={`seen-filter ${hideSeen ? 'active' : ''}`}
                 aria-pressed={hideSeen}
-                onClick={() => setHideSeen(current => !current)}
+                onClick={toggleHideSeen}
                 title={hideSeen && hiddenSeenCount > 0 ? `${hiddenSeenCount} seen hidden` : undefined}
               >
                 <EyeOff size={16} aria-hidden="true" />
@@ -595,7 +615,19 @@ function App() {
                 title={`${hoverPreview ? 'Disable' : 'Enable'} enlarged previews on hover`}
               >
                 <ZoomIn size={16} aria-hidden="true" />
-                Hover zoom
+                <span className="hover-preference-label">Hover zoom</span>
+              </button>
+            )}
+            {view !== 'tags' && (
+              <button
+                type="button"
+                className={`preference-toggle card-details-toggle ${showCardDetails ? 'active' : ''}`}
+                aria-pressed={showCardDetails}
+                onClick={() => setShowCardDetails(current => !current)}
+                title={`${showCardDetails ? 'Hide' : 'Show'} image details on hover`}
+              >
+                <Info size={16} aria-hidden="true" />
+                <span className="hover-preference-label">Card details</span>
               </button>
             )}
             {view !== 'tags' && (
@@ -705,11 +737,15 @@ function App() {
                   />
                   <span className="card-scrim"></span>
                   {seenSet.has(post.id) && <span className="seen-badge"><Eye size={13} aria-hidden="true" /> Seen</span>}
-                  <span className="resolution">{post.width} × {post.height}</span>
-                  <span className="card-copy">
-                    <strong>{post.displayTags.slice(0, 2).join(' · ') || `Post ${post.id}`}</strong>
-                    <small>{post.score} score</small>
-                  </span>
+                  {showCardDetails && (
+                    <>
+                      <span className="resolution">{post.width} × {post.height}</span>
+                      <span className="card-copy">
+                        <strong>{post.displayTags.slice(0, 2).join(' · ') || `Post ${post.id}`}</strong>
+                        <small>{post.score} score</small>
+                      </span>
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"

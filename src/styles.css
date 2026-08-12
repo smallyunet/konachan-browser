@@ -333,7 +333,8 @@ main {
 }
 
 .seen-filter .count { margin-left: 1px; }
-.hover-preview-toggle { display: none; }
+.hover-preview-toggle,
+.card-details-toggle { display: none; }
 
 .format-filter {
   display: flex;
@@ -473,7 +474,8 @@ main {
 }
 
 @media (hover: hover) and (pointer: fine) and (min-width: 761px) {
-  .hover-preview-toggle { display: inline-flex; }
+  .hover-preview-toggle,
+  .card-details-toggle { display: inline-flex; }
 
   .hover-preview-enabled .masonry:has(.wallpaper-card:hover) {
     position: relative;
@@ -764,6 +766,8 @@ footer {
 .lightbox-nav.next { right: 14px; }
 
 @media (max-width: 1120px) {
+  .hover-preference-label { display: none; }
+  .hover-preview-toggle, .card-details-toggle { min-width: 44px; justify-content: center; }
   .masonry { column-count: 3; }
   .skeleton-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .tag-ranking-grid, .tag-ranking-skeleton { grid-template-columns: repeat(2, minmax(0, 1fr)); }
