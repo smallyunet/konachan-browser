@@ -183,6 +183,12 @@ function App() {
       : [post, ...current])
   }
 
+  const saveFavorite = post => {
+    setFavorites(current => current.some(item => item.id === post.id)
+      ? current
+      : [post, ...current])
+  }
+
   const submitSearch = event => {
     event.preventDefault()
     setActiveQuery(query.trim())
@@ -380,7 +386,7 @@ function App() {
                   <Heart size={17} fill={favorites.some(item => item.id === selectedPost.id) ? 'currentColor' : 'none'} />
                   {favorites.some(item => item.id === selectedPost.id) ? 'Saved' : 'Save'}
                 </button>
-                <a href={selectedPost.fileUrl} target="_blank" rel="noreferrer"><ArrowDownToLine size={17} /> Original</a>
+                <a href={selectedPost.fileUrl} target="_blank" rel="noreferrer" onClick={() => saveFavorite(selectedPost)}><ArrowDownToLine size={17} /> Original</a>
                 <a href={selectedPost.postUrl} target="_blank" rel="noreferrer"><ExternalLink size={17} /> Source</a>
               </div>
               <p className="viewer-hint">Use ← → to browse · Esc to close</p>
