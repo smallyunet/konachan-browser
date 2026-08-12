@@ -6,6 +6,7 @@ import {
   Clock3,
   ExternalLink,
   Eye,
+  EyeOff,
   Flame,
   Grid2X2,
   Heart,
@@ -20,6 +21,7 @@ import {
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://konachan-browser-api.smallyu.workers.dev'
 const FAVORITES_KEY = 'konaview:favorites'
 const SEEN_KEY = 'konaview:seen'
+const HIDE_SEEN_KEY = 'konaview:hide-seen'
 
 const views = [
   { id: 'latest', label: 'Latest' },
@@ -55,6 +57,14 @@ function readSeen() {
     return Array.isArray(ids) ? ids.filter(Number.isFinite) : []
   } catch {
     return []
+  }
+}
+
+function readHideSeen() {
+  try {
+    return localStorage.getItem(HIDE_SEEN_KEY) !== 'false'
+  } catch {
+    return true
   }
 }
 
@@ -104,6 +114,8 @@ function App() {
   const [postBatches, setPostBatches] = useState([])
   const [favorites, setFavorites] = useState(readFavorites)
   const [seenIds, setSeenIds] = useState(readSeen)
+  const [hideSeen, setHideSeen] = useState(readHideSeen)
+  const [seenFilterBaseline, setSeenFilterBaseline] = useState(null)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
@@ -114,8 +126,6 @@ function App() {
   const [tagSuggestions, setTagSuggestions] = useState([])
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
-  const [relatedTags, setRelatedTags] = useState([])
-  const [relatedLoading, setRelatedLoading] = useState(false)
   const sentinelRef = useRef(null)
   const requestGenerationRef = useRef(0)
 
@@ -190,17 +200,35 @@ function App() {
     localStorage.setItem(SEEN_KEY, JSON.stringify(seenIds))
   }, [seenIds])
 
+  useEffect(() => {
+    localStorage.setItem(HIDE_SEEN_KEY, String(hideSeen))
+  }, [hideSeen])
+
   const sourcePosts = useMemo(
     () => view === 'favorites' ? favorites : postBatches.flat(),
     [favorites, postBatches, view],
   )
-  const visiblePosts = useMemo(() => sourcePosts.filter(post => {
+  const aspectFilteredPosts = useMemo(() => sourcePosts.filter(post => {
     const ratio = post.width / post.height
     if (aspect === 'landscape') return ratio >= 1.2
     if (aspect === 'portrait') return ratio < 0.9
     if (aspect === 'ultrawide') return ratio >= 1.75
     return true
   }), [aspect, sourcePosts])
+  const seenSet = useMemo(() => new Set(seenIds), [seenIds])
+  const filteredSeenSet = useMemo(
+    () => new Set(seenFilterBaseline ?? seenIds),
+    [seenFilterBaseline, seenIds],
+  )
+  const visiblePosts = useMemo(
+    () => view === 'favorites' || !hideSeen
+      ? aspectFilteredPosts
+      : aspectFilteredPosts.filter(post => !filteredSeenSet.has(post.id)),
+    [aspectFilteredPosts, filteredSeenSet, hideSeen, view],
+  )
+  const hiddenSeenCount = view === 'favorites' || !hideSeen
+    ? 0
+    : aspectFilteredPosts.length - visiblePosts.length
   const visiblePostIds = useMemo(() => new Set(visiblePosts.map(post => post.id)), [visiblePosts])
   const visibleBatches = useMemo(() => {
     if (view === 'favorites') return visiblePosts.length > 0 ? [visiblePosts] : []
@@ -211,7 +239,16 @@ function App() {
 
   const selectedIndex = visiblePosts.findIndex(post => post.id === selectedId)
   const selectedPost = selectedIndex >= 0 ? visiblePosts[selectedIndex] : null
-  const seenSet = useMemo(() => new Set(seenIds), [seenIds])
+
+  const openViewer = postId => {
+    setSeenFilterBaseline(seenIds)
+    setSelectedId(postId)
+  }
+
+  const closeViewer = useCallback(() => {
+    setSelectedId(null)
+    setSeenFilterBaseline(null)
+  }, [])
 
   useEffect(() => {
     const token = query.trim().split(/\s+/).at(-1) || ''
@@ -241,35 +278,6 @@ function App() {
   }, [query])
 
   useEffect(() => {
-    if (!selectedPost) {
-      setRelatedTags([])
-      setRelatedLoading(false)
-      return undefined
-    }
-
-    const tags = selectedPost.displayTags.slice(0, 3)
-    if (tags.length === 0) return undefined
-    const controller = new AbortController()
-    setRelatedTags([])
-    setRelatedLoading(true)
-
-    fetch(`${API_BASE}/related?tags=${encodeURIComponent(tags.join(' '))}`, { signal: controller.signal })
-      .then(response => {
-        if (!response.ok) throw new Error(`Request failed with ${response.status}`)
-        return response.json()
-      })
-      .then(data => setRelatedTags(Array.isArray(data.tags) ? data.tags : []))
-      .catch(fetchError => {
-        if (fetchError.name !== 'AbortError') setRelatedTags([])
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setRelatedLoading(false)
-      })
-
-    return () => controller.abort()
-  }, [selectedPost])
-
-  useEffect(() => {
     if (!selectedPost || seenSet.has(selectedPost.id)) return
     setSeenIds(current => [selectedPost.id, ...current].slice(0, 5000))
   }, [seenSet, selectedPost])
@@ -277,7 +285,7 @@ function App() {
   useEffect(() => {
     if (!selectedPost) return
     const handleKey = event => {
-      if (event.key === 'Escape') setSelectedId(null)
+      if (event.key === 'Escape') closeViewer()
       if (event.key === 'ArrowLeft' && selectedIndex > 0) {
         setSelectedId(visiblePosts[selectedIndex - 1].id)
       }
@@ -291,7 +299,7 @@ function App() {
       window.removeEventListener('keydown', handleKey)
       document.body.classList.remove('modal-open')
     }
-  }, [selectedIndex, selectedPost, visiblePosts])
+  }, [closeViewer, selectedIndex, selectedPost, visiblePosts])
 
   const toggleFavorite = post => {
     setFavorites(current => current.some(item => item.id === post.id)
@@ -415,9 +423,7 @@ function App() {
       <main id="gallery-content">
         <section className="intro" aria-labelledby="page-title">
           <div>
-            <p className="eyebrow"><span></span> A quieter way to discover</p>
-            <h1 id="page-title">Wallpaper browsing,<br /><em>beautifully focused.</em></h1>
-            <p className="lede">Explore high-resolution anime artwork in a fast, distraction-free gallery built for every screen.</p>
+            <h1 id="page-title">Find your next wallpaper.</h1>
           </div>
           <div className="intro-stats" aria-label="Gallery information">
             <div><strong>{visiblePosts.length}</strong><span>in view</span></div>
@@ -474,6 +480,19 @@ function App() {
                 ))}
               </div>
             )}
+            {view !== 'favorites' && (
+              <button
+                type="button"
+                className={`seen-filter ${hideSeen ? 'active' : ''}`}
+                aria-pressed={hideSeen}
+                onClick={() => setHideSeen(current => !current)}
+                title={hideSeen && hiddenSeenCount > 0 ? `${hiddenSeenCount} seen hidden` : undefined}
+              >
+                <EyeOff size={16} aria-hidden="true" />
+                Hide seen
+                {hideSeen && hiddenSeenCount > 0 && <span className="count">{hiddenSeenCount}</span>}
+              </button>
+            )}
             <div className="format-filter">
               <SlidersHorizontal size={16} aria-hidden="true" />
               <label className="sr-only" htmlFor="aspect-filter">Image format</label>
@@ -509,7 +528,7 @@ function App() {
                 <button
                   type="button"
                   className="image-button"
-                  onClick={() => setSelectedId(post.id)}
+                  onClick={() => openViewer(post.id)}
                   aria-label={`Open wallpaper ${post.id}${seenSet.has(post.id) ? ', seen' : ''}`}
                 >
                   <img
@@ -545,8 +564,15 @@ function App() {
         {!loading && !error && visiblePosts.length === 0 && (
           <div className="state-card">
             <Grid2X2 size={24} />
-            <h2>{view === 'favorites' ? 'Your collection starts here' : 'No wallpapers found'}</h2>
-            <p>{view === 'favorites' ? 'Tap the heart on any wallpaper to keep it close.' : 'Try a different tag or image format.'}</p>
+            <h2>{view === 'favorites' ? 'Your collection starts here' : hiddenSeenCount > 0 ? "You're all caught up" : 'No wallpapers found'}</h2>
+            <p>{view === 'favorites'
+              ? 'Tap the heart on any wallpaper to keep it close.'
+              : hiddenSeenCount > 0
+                ? `${hiddenSeenCount} seen ${hiddenSeenCount === 1 ? 'wallpaper is' : 'wallpapers are'} hidden.`
+                : 'Try a different tag or image format.'}</p>
+            {view !== 'favorites' && hiddenSeenCount > 0 && (
+              <button type="button" onClick={() => setHideSeen(false)}>Show seen</button>
+            )}
           </div>
         )}
 
@@ -571,9 +597,9 @@ function App() {
 
       {selectedPost && (
         <div className="lightbox" role="dialog" aria-modal="true" aria-label="Wallpaper viewer" onMouseDown={event => {
-          if (event.target === event.currentTarget) setSelectedId(null)
+          if (event.target === event.currentTarget) closeViewer()
         }}>
-          <button type="button" className="lightbox-close icon-button" onClick={() => setSelectedId(null)} aria-label="Close viewer"><X /></button>
+          <button type="button" className="lightbox-close icon-button" onClick={closeViewer} aria-label="Close viewer"><X /></button>
           {selectedIndex > 0 && (
             <button type="button" className="lightbox-nav previous icon-button" onClick={() => setSelectedId(visiblePosts[selectedIndex - 1].id)} aria-label="Previous wallpaper"><ChevronLeft /></button>
           )}
@@ -600,25 +626,9 @@ function App() {
               </dl>
               <div className="tag-list">
                 {selectedPost.displayTags.slice(0, 12).map(tag => (
-                  <button key={tag} type="button" onClick={() => { searchFor(tag); setSelectedId(null) }}>{tag.replaceAll('_', ' ')}</button>
+                  <button key={tag} type="button" onClick={() => { closeViewer(); searchFor(tag) }}>{tag.replaceAll('_', ' ')}</button>
                 ))}
               </div>
-              {(relatedLoading || relatedTags.length > 0) && (
-                <section className="related-tags" aria-labelledby="related-tags-title" aria-busy={relatedLoading}>
-                  <p id="related-tags-title">Related tags</p>
-                  {relatedLoading ? (
-                    <span className="related-loading">Finding similar artwork…</span>
-                  ) : (
-                    <div className="tag-list">
-                      {relatedTags.map(tag => (
-                        <button key={tag.name} type="button" onClick={() => { searchFor(tag.name); setSelectedId(null) }}>
-                          {tag.name.replaceAll('_', ' ')}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              )}
               <div className="lightbox-actions">
                 <button type="button" className="primary-action" onClick={() => toggleFavorite(selectedPost)}>
                   <Heart size={17} fill={favorites.some(item => item.id === selectedPost.id) ? 'currentColor' : 'none'} />
