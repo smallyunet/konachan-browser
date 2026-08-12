@@ -189,8 +189,14 @@ kbd {
   background: rgba(255, 255, 255, 0.04);
 }
 
-.source-link {
+.topbar-end {
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.source-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -200,6 +206,23 @@ kbd {
 }
 
 .source-link:hover { color: #fff; }
+
+.topbar-refresh {
+  color: var(--text-muted);
+  border-color: transparent;
+  background: transparent;
+  backdrop-filter: none;
+  transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.topbar-refresh:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.topbar-refresh:disabled { cursor: wait; opacity: 0.58; }
+.topbar-refresh.refreshing svg { animation: spin 750ms linear infinite; }
 
 main {
   width: min(1780px, 100%);

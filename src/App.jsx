@@ -12,6 +12,7 @@ import {
   Heart,
   Image as ImageIcon,
   Info,
+  RefreshCw,
   Search,
   Shuffle,
   SlidersHorizontal,
@@ -319,6 +320,12 @@ function App() {
 
   const openViewer = postId => setSelectedId(postId)
 
+  const markSeen = useCallback(postId => {
+    setSeenIds(current => current.includes(postId)
+      ? current
+      : [postId, ...current].slice(0, SEEN_HISTORY_LIMIT))
+  }, [])
+
   const closeViewer = useCallback(() => {
     setSelectedId(null)
   }, [])
@@ -356,9 +363,8 @@ function App() {
   }, [query])
 
   useEffect(() => {
-    if (!selectedPost || seenSet.has(selectedPost.id)) return
-    setSeenIds(current => [selectedPost.id, ...current].slice(0, SEEN_HISTORY_LIMIT))
-  }, [seenSet, selectedPost])
+    if (selectedPost) markSeen(selectedPost.id)
+  }, [markSeen, selectedPost])
 
   useEffect(() => {
     if (!selectedPost) return
@@ -433,6 +439,28 @@ function App() {
     }
   }
 
+  const refreshCurrentView = () => {
+    if (view === 'random') {
+      setRandomKey(current => current + 1)
+      return
+    }
+    if (view === 'tags') {
+      fetchRankedTags(new AbortController().signal)
+      return
+    }
+    if (view === 'favorites') {
+      setFavorites(readFavorites())
+      return
+    }
+
+    setSeenFilterBaseline(seenIds)
+    setPage(1)
+    setHasMore(true)
+    fetchPosts(1, true)
+  }
+
+  const refreshing = view === 'tags' ? rankedTagsLoading : view !== 'favorites' && loading
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#gallery-content">Skip to gallery</a>
@@ -493,9 +521,21 @@ function App() {
           )}
         </form>
 
-        <a className="source-link" href="https://konachan.net" target="_blank" rel="noreferrer">
-          Konachan <ExternalLink size={14} />
-        </a>
+        <div className="topbar-end">
+          <button
+            type="button"
+            className={`icon-button topbar-refresh ${refreshing ? 'refreshing' : ''}`}
+            onClick={refreshCurrentView}
+            disabled={refreshing}
+            aria-label="Refresh current view"
+            title="Refresh current view"
+          >
+            <RefreshCw size={17} aria-hidden="true" />
+          </button>
+          <a className="source-link" href="https://konachan.net" target="_blank" rel="noreferrer">
+            Konachan <ExternalLink size={14} />
+          </a>
+        </div>
       </header>
 
       <main id="gallery-content">
@@ -712,7 +752,10 @@ function App() {
                 <article
                   className={`wallpaper-card ${seenSet.has(post.id) ? 'seen' : ''}`}
                   key={post.id}
-                  onMouseEnter={positionHoverPreview}
+                  onMouseEnter={event => {
+                    positionHoverPreview(event)
+                    markSeen(post.id)
+                  }}
                 >
                   <button
                     type="button"
