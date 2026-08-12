@@ -9,6 +9,7 @@ A modern, focused browsing experience for high-resolution anime wallpapers from 
 - Tag search and aspect-ratio filters
 - Keyboard-friendly immersive viewer
 - Device-local favorites
+- Automatic device-local seen history
 - A constrained Cloudflare Worker API proxy
 - Automatic GitHub Pages deployment
 

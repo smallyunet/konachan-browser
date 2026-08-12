@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Eye,
   Grid2X2,
   Heart,
   Image as ImageIcon,
@@ -15,6 +16,7 @@ import {
 
 const API_BASE = 'https://konachan-browser-api.smallyu.workers.dev'
 const FAVORITES_KEY = 'konaview:favorites'
+const SEEN_KEY = 'konaview:seen'
 
 const views = [
   { id: 'latest', label: 'Latest' },
@@ -37,6 +39,15 @@ function readFavorites() {
   }
 }
 
+function readSeen() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')
+    return Array.isArray(ids) ? ids.filter(Number.isFinite) : []
+  } catch {
+    return []
+  }
+}
+
 function App() {
   const [view, setView] = useState('latest')
   const [aspect, setAspect] = useState('all')
@@ -44,6 +55,7 @@ function App() {
   const [activeQuery, setActiveQuery] = useState('')
   const [posts, setPosts] = useState([])
   const [favorites, setFavorites] = useState(readFavorites)
+  const [seenIds, setSeenIds] = useState(readSeen)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
@@ -99,6 +111,10 @@ function App() {
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites))
   }, [favorites])
 
+  useEffect(() => {
+    localStorage.setItem(SEEN_KEY, JSON.stringify(seenIds))
+  }, [seenIds])
+
   const sourcePosts = view === 'favorites' ? favorites : posts
   const visiblePosts = useMemo(() => sourcePosts.filter(post => {
     const ratio = post.width / post.height
@@ -110,6 +126,12 @@ function App() {
 
   const selectedIndex = visiblePosts.findIndex(post => post.id === selectedId)
   const selectedPost = selectedIndex >= 0 ? visiblePosts[selectedIndex] : null
+  const seenSet = useMemo(() => new Set(seenIds), [seenIds])
+
+  useEffect(() => {
+    if (!selectedPost || seenSet.has(selectedPost.id)) return
+    setSeenIds(current => [selectedPost.id, ...current].slice(0, 5000))
+  }, [seenSet, selectedPost])
 
   useEffect(() => {
     if (!selectedPost) return
@@ -184,6 +206,7 @@ function App() {
           <div className="intro-stats" aria-label="Gallery information">
             <div><strong>{visiblePosts.length}</strong><span>in view</span></div>
             <div><strong>{favorites.length}</strong><span>saved locally</span></div>
+            <div><strong>{seenIds.length}</strong><span>seen locally</span></div>
           </div>
         </section>
 
@@ -233,8 +256,13 @@ function App() {
         {!error && visiblePosts.length > 0 && (
           <section className="masonry" aria-live="polite" aria-label="Wallpaper gallery">
             {visiblePosts.map(post => (
-              <article className="wallpaper-card" key={post.id}>
-                <button type="button" className="image-button" onClick={() => setSelectedId(post.id)} aria-label={`Open wallpaper ${post.id}`}>
+              <article className={`wallpaper-card ${seenSet.has(post.id) ? 'seen' : ''}`} key={post.id}>
+                <button
+                  type="button"
+                  className="image-button"
+                  onClick={() => setSelectedId(post.id)}
+                  aria-label={`Open wallpaper ${post.id}${seenSet.has(post.id) ? ', seen' : ''}`}
+                >
                   <img
                     src={post.sampleUrl || post.previewUrl}
                     alt={post.displayTags.slice(0, 4).join(', ')}
@@ -243,6 +271,7 @@ function App() {
                     loading="lazy"
                   />
                   <span className="card-scrim"></span>
+                  {seenSet.has(post.id) && <span className="seen-badge"><Eye size={13} aria-hidden="true" /> Seen</span>}
                   <span className="resolution">{post.width} × {post.height}</span>
                   <span className="card-copy">
                     <strong>{post.displayTags.slice(0, 2).join(' · ') || `Post ${post.id}`}</strong>
