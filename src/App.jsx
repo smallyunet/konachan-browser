@@ -735,10 +735,10 @@ function App() {
                     height={post.sampleHeight || post.height}
                     loading="lazy"
                   />
-                  <span className="card-scrim"></span>
                   {seenSet.has(post.id) && <span className="seen-badge"><Eye size={13} aria-hidden="true" /> Seen</span>}
                   {showCardDetails && (
                     <>
+                      <span className="card-scrim"></span>
                       <span className="resolution">{post.width} × {post.height}</span>
                       <span className="card-copy">
                         <strong>{post.displayTags.slice(0, 2).join(' · ') || `Post ${post.id}`}</strong>
