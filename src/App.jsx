@@ -18,12 +18,14 @@ import {
   Tags,
   Trophy,
   X,
+  ZoomIn,
 } from 'lucide-react'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://konachan-browser-api.smallyu.workers.dev'
 const FAVORITES_KEY = 'konaview:favorites'
 const SEEN_KEY = 'konaview:seen'
 const HIDE_SEEN_KEY = 'konaview:hide-seen'
+const HOVER_PREVIEW_KEY = 'konaview:hover-preview'
 const SEEN_HISTORY_LIMIT = 20_000
 
 const views = [
@@ -79,6 +81,27 @@ function readHideSeen() {
   }
 }
 
+function readHoverPreview() {
+  try {
+    return localStorage.getItem(HOVER_PREVIEW_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+function positionHoverPreview(event) {
+  const card = event.currentTarget
+  const bounds = card.getBoundingClientRect()
+  const scaledOverflow = bounds.width * 0.26
+  const safeInset = 16
+  let origin = 'center center'
+
+  if (bounds.left < scaledOverflow + safeInset) origin = 'left center'
+  else if (window.innerWidth - bounds.right < scaledOverflow + safeInset) origin = 'right center'
+
+  card.style.setProperty('--hover-preview-origin', origin)
+}
+
 function formatBytes(value) {
   const bytes = Number(value)
   if (!Number.isFinite(bytes) || bytes <= 0) return 'Unknown'
@@ -119,6 +142,7 @@ function App() {
   const [favorites, setFavorites] = useState(readFavorites)
   const [seenIds, setSeenIds] = useState(readSeen)
   const [hideSeen, setHideSeen] = useState(readHideSeen)
+  const [hoverPreview, setHoverPreview] = useState(readHoverPreview)
   const [seenFilterBaseline, setSeenFilterBaseline] = useState(null)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
@@ -240,6 +264,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem(HIDE_SEEN_KEY, String(hideSeen))
   }, [hideSeen])
+
+  useEffect(() => {
+    localStorage.setItem(HOVER_PREVIEW_KEY, String(hoverPreview))
+  }, [hoverPreview])
 
   const sourcePosts = useMemo(
     () => view === 'favorites' ? favorites : postBatches.flat(),
@@ -559,6 +587,18 @@ function App() {
               </button>
             )}
             {view !== 'tags' && (
+              <button
+                type="button"
+                className={`preference-toggle hover-preview-toggle ${hoverPreview ? 'active' : ''}`}
+                aria-pressed={hoverPreview}
+                onClick={() => setHoverPreview(current => !current)}
+                title={`${hoverPreview ? 'Disable' : 'Enable'} enlarged previews on hover`}
+              >
+                <ZoomIn size={16} aria-hidden="true" />
+                Hover zoom
+              </button>
+            )}
+            {view !== 'tags' && (
               <div className="format-filter">
                 <SlidersHorizontal size={16} aria-hidden="true" />
                 <label className="sr-only" htmlFor="aspect-filter">Image format</label>
@@ -641,11 +681,15 @@ function App() {
         )}
 
         {view !== 'tags' && !error && visiblePosts.length > 0 && (
-          <div className="gallery-batches" aria-live="polite" aria-label="Wallpaper gallery">
+          <div className={`gallery-batches ${hoverPreview ? 'hover-preview-enabled' : ''}`} aria-live="polite" aria-label="Wallpaper gallery">
             {visibleBatches.map((batch, batchIndex) => (
               <section className="masonry" key={`${view}-${aspect}-${activeQuery}-${batchIndex}`} aria-label={`Wallpaper batch ${batchIndex + 1}`}>
                 {batch.map(post => (
-              <article className={`wallpaper-card ${seenSet.has(post.id) ? 'seen' : ''}`} key={post.id}>
+              <article
+                className={`wallpaper-card ${seenSet.has(post.id) ? 'seen' : ''}`}
+                key={post.id}
+                onMouseEnter={positionHoverPreview}
+              >
                 <button
                   type="button"
                   className="image-button"
