@@ -421,17 +421,7 @@ function App() {
       </header>
 
       <main id="gallery-content">
-        <section className="intro" aria-labelledby="page-title">
-          <div>
-            <h1 id="page-title">Find your next wallpaper.</h1>
-          </div>
-          <div className="intro-stats" aria-label="Gallery information">
-            <div><strong>{visiblePosts.length}</strong><span>in view</span></div>
-            <div><strong>{favorites.length}</strong><span>saved locally</span></div>
-            <div><strong>{seenIds.length}</strong><span>seen locally</span></div>
-          </div>
-        </section>
-
+        <h1 className="sr-only">KonaView wallpaper gallery</h1>
         <section className="gallery-toolbar" aria-label="Gallery controls">
           <div className="view-tabs" role="tablist" aria-label="Gallery view">
             {views.map(item => (
