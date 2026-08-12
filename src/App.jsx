@@ -313,13 +313,6 @@ function App() {
   const hiddenSeenCount = view === 'favorites' || !hideSeen
     ? 0
     : aspectFilteredPosts.length - visiblePosts.length
-  const visiblePostIds = useMemo(() => new Set(visiblePosts.map(post => post.id)), [visiblePosts])
-  const visibleBatches = useMemo(() => {
-    if (view === 'favorites') return visiblePosts.length > 0 ? [visiblePosts] : []
-    return postBatches
-      .map(batch => batch.filter(post => visiblePostIds.has(post.id)))
-      .filter(batch => batch.length > 0)
-  }, [postBatches, view, visiblePostIds, visiblePosts])
 
   const selectedIndex = visiblePosts.findIndex(post => post.id === selectedId)
   const selectedPost = selectedIndex >= 0 ? visiblePosts[selectedIndex] : null
@@ -714,51 +707,49 @@ function App() {
 
         {view !== 'tags' && !error && visiblePosts.length > 0 && (
           <div className={`gallery-batches ${hoverPreview ? 'hover-preview-enabled' : ''}`} aria-live="polite" aria-label="Wallpaper gallery">
-            {visibleBatches.map((batch, batchIndex) => (
-              <section className="masonry" key={`${view}-${aspect}-${activeQuery}-${batchIndex}`} aria-label={`Wallpaper batch ${batchIndex + 1}`}>
-                {batch.map(post => (
-              <article
-                className={`wallpaper-card ${seenSet.has(post.id) ? 'seen' : ''}`}
-                key={post.id}
-                onMouseEnter={positionHoverPreview}
-              >
-                <button
-                  type="button"
-                  className="image-button"
-                  onClick={() => openViewer(post.id)}
-                  aria-label={`Open wallpaper ${post.id}${seenSet.has(post.id) ? ', seen' : ''}`}
+            <section className="masonry" aria-label="Wallpapers">
+              {visiblePosts.map(post => (
+                <article
+                  className={`wallpaper-card ${seenSet.has(post.id) ? 'seen' : ''}`}
+                  key={post.id}
+                  onMouseEnter={positionHoverPreview}
                 >
-                  <img
-                    src={post.sampleUrl || post.previewUrl}
-                    alt={post.displayTags.slice(0, 4).join(', ')}
-                    width={post.sampleWidth || post.width}
-                    height={post.sampleHeight || post.height}
-                    loading="lazy"
-                  />
-                  {seenSet.has(post.id) && <span className="seen-badge"><Eye size={13} aria-hidden="true" /> Seen</span>}
-                  {showCardDetails && (
-                    <>
-                      <span className="card-scrim"></span>
-                      <span className="resolution">{post.width} × {post.height}</span>
-                      <span className="card-copy">
-                        <strong>{post.displayTags.slice(0, 2).join(' · ') || `Post ${post.id}`}</strong>
-                        <small>{post.score} score</small>
-                      </span>
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className={`favorite-button ${favorites.some(item => item.id === post.id) ? 'saved' : ''}`}
-                  onClick={() => toggleFavorite(post)}
-                  aria-label={favorites.some(item => item.id === post.id) ? 'Remove from favorites' : 'Save to favorites'}
-                >
-                  <Heart size={17} fill="currentColor" />
-                </button>
-              </article>
-                ))}
-              </section>
-            ))}
+                  <button
+                    type="button"
+                    className="image-button"
+                    onClick={() => openViewer(post.id)}
+                    aria-label={`Open wallpaper ${post.id}${seenSet.has(post.id) ? ', seen' : ''}`}
+                  >
+                    <img
+                      src={post.sampleUrl || post.previewUrl}
+                      alt={post.displayTags.slice(0, 4).join(', ')}
+                      width={post.sampleWidth || post.width}
+                      height={post.sampleHeight || post.height}
+                      loading="lazy"
+                    />
+                    {seenSet.has(post.id) && <span className="seen-badge"><Eye size={13} aria-hidden="true" /> Seen</span>}
+                    {showCardDetails && (
+                      <>
+                        <span className="card-scrim"></span>
+                        <span className="resolution">{post.width} × {post.height}</span>
+                        <span className="card-copy">
+                          <strong>{post.displayTags.slice(0, 2).join(' · ') || `Post ${post.id}`}</strong>
+                          <small>{post.score} score</small>
+                        </span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={`favorite-button ${favorites.some(item => item.id === post.id) ? 'saved' : ''}`}
+                    onClick={() => toggleFavorite(post)}
+                    aria-label={favorites.some(item => item.id === post.id) ? 'Remove from favorites' : 'Save to favorites'}
+                  >
+                    <Heart size={17} fill="currentColor" />
+                  </button>
+                </article>
+              ))}
+            </section>
           </div>
         )}
 
