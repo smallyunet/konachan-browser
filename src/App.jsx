@@ -22,6 +22,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'https://konachan-browser-api.
 const FAVORITES_KEY = 'konaview:favorites'
 const SEEN_KEY = 'konaview:seen'
 const HIDE_SEEN_KEY = 'konaview:hide-seen'
+const SEEN_HISTORY_LIMIT = 20_000
 
 const views = [
   { id: 'latest', label: 'Latest' },
@@ -279,7 +280,7 @@ function App() {
 
   useEffect(() => {
     if (!selectedPost || seenSet.has(selectedPost.id)) return
-    setSeenIds(current => [selectedPost.id, ...current].slice(0, 5000))
+    setSeenIds(current => [selectedPost.id, ...current].slice(0, SEEN_HISTORY_LIMIT))
   }, [seenSet, selectedPost])
 
   useEffect(() => {
