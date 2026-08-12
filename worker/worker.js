@@ -5,6 +5,8 @@ const ALLOWED_ORIGINS = new Set([
 ])
 
 const UPSTREAM = 'https://konachan.net/post.json'
+const TAGS_UPSTREAM = 'https://konachan.net/tag.json'
+const RELATED_TAGS_UPSTREAM = 'https://konachan.net/tag/related.json'
 const POPULAR_ENDPOINTS = {
   day: 'https://konachan.net/post/popular_by_day.json',
   week: 'https://konachan.net/post/popular_by_week.json',
@@ -58,6 +60,27 @@ function cleanTags(value) {
     .slice(0, 5)
 }
 
+function cleanTagQuery(value) {
+  const query = String(value || '').trim().slice(0, 80)
+  return /^[\p{L}\p{N}_.*~()\-]+$/u.test(query) ? query : ''
+}
+
+function safeUrl(value) {
+  try {
+    const url = new URL(String(value || ''))
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+function createdAt(value) {
+  const timestamp = Number(value)
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null
+  const date = new Date(timestamp * 1000)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null
+}
+
 function normalizePost(post) {
   const tags = String(post.tags || '').split(/\s+/).filter(Boolean)
   return {
@@ -73,6 +96,79 @@ function normalizePost(post) {
     previewUrl: post.preview_url,
     displayTags: tags,
     postUrl: `https://konachan.net/post/show/${post.id}`,
+    sourceUrl: safeUrl(post.source),
+    author: typeof post.author === 'string' ? post.author : null,
+    createdAt: createdAt(post.created_at),
+    fileSize: Number(post.file_size) || null,
+  }
+}
+
+function normalizeTag(tag) {
+  const name = typeof tag?.name === 'string' ? tag.name : ''
+  const count = Number(tag?.count) || 0
+  if (!name || count <= 0) return null
+  return { name, count, type: Number(tag.type) || 0 }
+}
+
+async function fetchUpstream(url, cacheTtl = 300) {
+  return fetch(url, {
+    headers: { 'User-Agent': 'KonaView/0.1 (+https://github.com/smallyunet/konaview)' },
+    cf: { cacheEverything: true, cacheTtl },
+  })
+}
+
+async function handleTagSuggestions(request, url) {
+  const query = cleanTagQuery(url.searchParams.get('query'))
+  if (query.length < 2) return json(request, { tags: [] }, 200, 'public, max-age=60')
+
+  const upstreamUrl = new URL(TAGS_UPSTREAM)
+  upstreamUrl.searchParams.set('name', query)
+  upstreamUrl.searchParams.set('order', 'count')
+  upstreamUrl.searchParams.set('limit', '12')
+
+  try {
+    const response = await fetchUpstream(upstreamUrl, 900)
+    if (!response.ok) return json(request, { error: 'Upstream request failed' }, 502)
+    const payload = await response.json()
+    const tags = Array.isArray(payload)
+      ? payload.map(normalizeTag).filter(Boolean).slice(0, 10)
+      : []
+    return json(request, { tags }, 200, 'public, max-age=300, s-maxage=900, stale-while-revalidate=1800')
+  } catch {
+    return json(request, { error: 'Tag service unavailable' }, 503)
+  }
+}
+
+async function handleRelatedTags(request, url) {
+  const requestedTags = cleanTags(url.searchParams.get('tags') || '').slice(0, 3)
+  if (requestedTags.length === 0) return json(request, { tags: [] }, 200, 'public, max-age=60')
+
+  const upstreamUrl = new URL(RELATED_TAGS_UPSTREAM)
+  upstreamUrl.searchParams.set('tags', requestedTags.join(' '))
+
+  try {
+    const response = await fetchUpstream(upstreamUrl, 1800)
+    if (!response.ok) return json(request, { error: 'Upstream request failed' }, 502)
+    const payload = await response.json()
+    const requested = new Set(requestedTags)
+    const entries = payload && typeof payload === 'object'
+      ? Object.values(payload).flatMap(value => Array.isArray(value) ? value : [])
+      : []
+    const counts = new Map()
+    for (const entry of entries) {
+      if (!Array.isArray(entry)) continue
+      const [name, rawCount] = entry
+      const count = Number(rawCount) || 0
+      if (typeof name !== 'string' || !name || requested.has(name) || count <= 0) continue
+      counts.set(name, Math.max(counts.get(name) || 0, count))
+    }
+    const tags = [...counts.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }))
+    return json(request, { tags }, 200, 'public, max-age=600, s-maxage=1800, stale-while-revalidate=3600')
+  } catch {
+    return json(request, { error: 'Related tag service unavailable' }, 503)
   }
 }
 
@@ -108,6 +204,9 @@ export default {
     if (url.pathname === '/' || url.pathname === '/health') {
       return json(request, { service: 'KonaView API', status: 'ok' }, 200, 'public, max-age=60')
     }
+
+    if (url.pathname === '/tags') return handleTagSuggestions(request, url)
+    if (url.pathname === '/related') return handleRelatedTags(request, url)
 
     if (url.pathname !== '/posts') {
       return json(request, { error: 'Not found' }, 404)

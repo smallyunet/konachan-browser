@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react'
 
-const API_BASE = 'https://konachan-browser-api.smallyu.workers.dev'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://konachan-browser-api.smallyu.workers.dev'
 const FAVORITES_KEY = 'konaview:favorites'
 const SEEN_KEY = 'konaview:seen'
 
@@ -65,6 +65,37 @@ function localDateStamp() {
   return `${now.getFullYear()}-${month}-${day}`
 }
 
+function formatBytes(value) {
+  const bytes = Number(value)
+  if (!Number.isFinite(bytes) || bytes <= 0) return 'Unknown'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const amount = bytes / (1024 ** unitIndex)
+  return `${amount.toFixed(amount >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+function formatDate(value) {
+  if (!value) return 'Unknown'
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return 'Unknown'
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date)
+}
+
+function sourceLabel(value) {
+  try {
+    return new URL(value).hostname.replace(/^www\./, '')
+  } catch {
+    return 'Original source'
+  }
+}
+
+function tagTypeLabel(type) {
+  if (type === 1) return 'Artist'
+  if (type === 3) return 'Series'
+  if (type === 4) return 'Character'
+  return 'Tag'
+}
+
 function App() {
   const [view, setView] = useState('latest')
   const [aspect, setAspect] = useState('all')
@@ -80,6 +111,11 @@ function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [randomKey, setRandomKey] = useState(0)
   const [popularPeriod, setPopularPeriod] = useState('week')
+  const [tagSuggestions, setTagSuggestions] = useState([])
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const [activeSuggestion, setActiveSuggestion] = useState(-1)
+  const [relatedTags, setRelatedTags] = useState([])
+  const [relatedLoading, setRelatedLoading] = useState(false)
   const sentinelRef = useRef(null)
   const requestGenerationRef = useRef(0)
 
@@ -178,6 +214,62 @@ function App() {
   const seenSet = useMemo(() => new Set(seenIds), [seenIds])
 
   useEffect(() => {
+    const token = query.trim().split(/\s+/).at(-1) || ''
+    if (token.length < 2) {
+      setTagSuggestions([])
+      setActiveSuggestion(-1)
+      return undefined
+    }
+
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE}/tags?query=${encodeURIComponent(token)}`, { signal: controller.signal })
+        if (!response.ok) throw new Error(`Request failed with ${response.status}`)
+        const data = await response.json()
+        setTagSuggestions(Array.isArray(data.tags) ? data.tags : [])
+        setActiveSuggestion(-1)
+      } catch (fetchError) {
+        if (fetchError.name !== 'AbortError') setTagSuggestions([])
+      }
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [query])
+
+  useEffect(() => {
+    if (!selectedPost) {
+      setRelatedTags([])
+      setRelatedLoading(false)
+      return undefined
+    }
+
+    const tags = selectedPost.displayTags.slice(0, 3)
+    if (tags.length === 0) return undefined
+    const controller = new AbortController()
+    setRelatedTags([])
+    setRelatedLoading(true)
+
+    fetch(`${API_BASE}/related?tags=${encodeURIComponent(tags.join(' '))}`, { signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`Request failed with ${response.status}`)
+        return response.json()
+      })
+      .then(data => setRelatedTags(Array.isArray(data.tags) ? data.tags : []))
+      .catch(fetchError => {
+        if (fetchError.name !== 'AbortError') setRelatedTags([])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRelatedLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedPost])
+
+  useEffect(() => {
     if (!selectedPost || seenSet.has(selectedPost.id)) return
     setSeenIds(current => [selectedPost.id, ...current].slice(0, 5000))
   }, [seenSet, selectedPost])
@@ -213,10 +305,46 @@ function App() {
       : [post, ...current])
   }
 
+  const searchFor = value => {
+    const nextQuery = value.trim()
+    setQuery(nextQuery)
+    setActiveQuery(nextQuery)
+    setSuggestionsOpen(false)
+    setActiveSuggestion(-1)
+    if (view !== 'latest') setView('latest')
+  }
+
+  const selectSuggestion = name => {
+    const tokens = query.trim().split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) tokens.push(name)
+    else tokens[tokens.length - 1] = name
+    searchFor(tokens.join(' '))
+  }
+
   const submitSearch = event => {
     event.preventDefault()
-    setActiveQuery(query.trim())
-    if (view === 'favorites' || view === 'popular') setView('latest')
+    if (suggestionsOpen && activeSuggestion >= 0 && tagSuggestions[activeSuggestion]) {
+      selectSuggestion(tagSuggestions[activeSuggestion].name)
+      return
+    }
+    searchFor(query)
+  }
+
+  const handleSearchKeyDown = event => {
+    if (event.key === 'Escape') {
+      setSuggestionsOpen(false)
+      setActiveSuggestion(-1)
+      return
+    }
+    if (tagSuggestions.length === 0 || !suggestionsOpen) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveSuggestion(current => (current + 1) % tagSuggestions.length)
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveSuggestion(current => current <= 0 ? tagSuggestions.length - 1 : current - 1)
+    }
   }
 
   return (
@@ -228,22 +356,55 @@ function App() {
           <span>KonaView</span>
         </a>
 
-        <form className="search" onSubmit={submitSearch} role="search">
+        <form
+          className="search"
+          onSubmit={submitSearch}
+          onFocus={() => setSuggestionsOpen(true)}
+          onBlur={event => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setSuggestionsOpen(false)
+          }}
+          role="search"
+        >
           <Search size={18} aria-hidden="true" />
           <label className="sr-only" htmlFor="search-input">Search characters, series, or artists</label>
           <input
             id="search-input"
             value={query}
             onChange={event => setQuery(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
             placeholder="Search characters, series, artists…"
             autoComplete="off"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={suggestionsOpen && tagSuggestions.length > 0}
+            aria-controls="tag-suggestions"
+            aria-activedescendant={activeSuggestion >= 0 ? `tag-suggestion-${activeSuggestion}` : undefined}
           />
           {query && (
-            <button type="button" className="icon-button compact" onClick={() => { setQuery(''); setActiveQuery('') }} aria-label="Clear search">
+            <button type="button" className="icon-button compact" onClick={() => { setQuery(''); setActiveQuery(''); setTagSuggestions([]) }} aria-label="Clear search">
               <X size={16} />
             </button>
           )}
           <kbd>Enter</kbd>
+          {suggestionsOpen && tagSuggestions.length > 0 && (
+            <div className="tag-suggestions" id="tag-suggestions" role="listbox" aria-label="Tag suggestions">
+              {tagSuggestions.map((tag, index) => (
+                <button
+                  type="button"
+                  role="option"
+                  id={`tag-suggestion-${index}`}
+                  aria-selected={activeSuggestion === index}
+                  className={activeSuggestion === index ? 'active' : ''}
+                  key={tag.name}
+                  onMouseEnter={() => setActiveSuggestion(index)}
+                  onClick={() => selectSuggestion(tag.name)}
+                >
+                  <span><strong>{tag.name.replaceAll('_', ' ')}</strong><small>{tagTypeLabel(tag.type)}</small></span>
+                  <span className="suggestion-count">{tag.count.toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </form>
 
         <a className="source-link" href="https://konachan.net" target="_blank" rel="noreferrer">
@@ -426,23 +587,45 @@ function App() {
                 <h2>{selectedPost.displayTags.slice(0, 3).join(' · ')}</h2>
                 <p className="dimensions">{selectedPost.width} × {selectedPost.height} · {selectedPost.fileExt.toUpperCase()}</p>
               </div>
+              <dl className="post-details">
+                <div><dt>Author</dt><dd>{selectedPost.author || 'Unknown'}</dd></div>
+                <div><dt>Uploaded</dt><dd>{formatDate(selectedPost.createdAt)}</dd></div>
+                <div><dt>Original size</dt><dd>{formatBytes(selectedPost.fileSize)}</dd></div>
+                {selectedPost.sourceUrl && (
+                  <div>
+                    <dt>Artwork source</dt>
+                    <dd><a href={selectedPost.sourceUrl} target="_blank" rel="noreferrer">{sourceLabel(selectedPost.sourceUrl)} <ExternalLink size={12} /></a></dd>
+                  </div>
+                )}
+              </dl>
               <div className="tag-list">
                 {selectedPost.displayTags.slice(0, 12).map(tag => (
-                  <button key={tag} type="button" onClick={() => {
-                    setQuery(tag)
-                    setActiveQuery(tag)
-                    setView('latest')
-                    setSelectedId(null)
-                  }}>{tag.replaceAll('_', ' ')}</button>
+                  <button key={tag} type="button" onClick={() => { searchFor(tag); setSelectedId(null) }}>{tag.replaceAll('_', ' ')}</button>
                 ))}
               </div>
+              {(relatedLoading || relatedTags.length > 0) && (
+                <section className="related-tags" aria-labelledby="related-tags-title" aria-busy={relatedLoading}>
+                  <p id="related-tags-title">Related tags</p>
+                  {relatedLoading ? (
+                    <span className="related-loading">Finding similar artwork…</span>
+                  ) : (
+                    <div className="tag-list">
+                      {relatedTags.map(tag => (
+                        <button key={tag.name} type="button" onClick={() => { searchFor(tag.name); setSelectedId(null) }}>
+                          {tag.name.replaceAll('_', ' ')}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
               <div className="lightbox-actions">
                 <button type="button" className="primary-action" onClick={() => toggleFavorite(selectedPost)}>
                   <Heart size={17} fill={favorites.some(item => item.id === selectedPost.id) ? 'currentColor' : 'none'} />
                   {favorites.some(item => item.id === selectedPost.id) ? 'Saved' : 'Save'}
                 </button>
                 <a href={selectedPost.fileUrl} target="_blank" rel="noreferrer" onClick={() => saveFavorite(selectedPost)}><ArrowDownToLine size={17} /> Original</a>
-                <a href={selectedPost.postUrl} target="_blank" rel="noreferrer"><ExternalLink size={17} /> Source</a>
+                <a href={selectedPost.postUrl} target="_blank" rel="noreferrer"><ExternalLink size={17} /> Konachan</a>
               </div>
               <p className="viewer-hint">Use ← → to browse · Esc to close</p>
             </aside>
