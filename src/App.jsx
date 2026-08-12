@@ -595,9 +595,9 @@ function App() {
             <button type="button" className="lightbox-nav previous icon-button" onClick={() => setSelectedId(visiblePosts[selectedIndex - 1].id)} aria-label="Previous wallpaper"><ChevronLeft /></button>
           )}
           <div className="lightbox-panel">
-            <div className="lightbox-image-wrap">
-              <img src={selectedPost.sampleUrl || selectedPost.fileUrl} alt={selectedPost.displayTags.join(', ')} />
-            </div>
+            <button type="button" className="lightbox-image-wrap" onClick={closeViewer} aria-label="Close viewer">
+              <img src={selectedPost.sampleUrl || selectedPost.fileUrl} alt={selectedPost.displayTags.join(', ')} draggable="false" />
+            </button>
             <aside className="lightbox-meta">
               <div>
                 <p className="eyebrow"><span></span> Wallpaper {selectedPost.id}</p>
