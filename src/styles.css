@@ -269,6 +269,41 @@ h1 em { color: #aaa4bb; font-weight: 400; }
   font-size: 11px;
 }
 
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.period-filter {
+  padding: 3px;
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.period-filter button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  color: #85828e;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  transition: color 180ms ease, background-color 180ms ease;
+}
+
+.period-filter button:hover { color: #fff; }
+.period-filter button.active {
+  color: #ffc6ae;
+  background: var(--accent-soft);
+}
+
 .format-filter {
   display: flex;
   align-items: center;
@@ -605,7 +640,9 @@ footer {
   .intro-stats { display: none; }
   .gallery-toolbar { align-items: stretch; flex-direction: column; gap: 0; }
   .view-tabs { min-height: 58px; gap: 20px; overflow-x: auto; }
-  .format-filter { min-height: 52px; justify-content: flex-end; border-top: 1px solid var(--line); }
+  .toolbar-actions { min-height: 52px; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); }
+  .format-filter { min-height: 52px; justify-content: flex-end; }
+  .period-filter { margin-left: 2px; }
   .masonry { padding-top: 14px; column-count: 2; column-gap: 10px; }
   .gallery-batches .masonry + .masonry { margin-top: 10px; }
   .skeleton-grid { padding-top: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

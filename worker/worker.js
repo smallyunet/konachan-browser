@@ -5,12 +5,18 @@ const ALLOWED_ORIGINS = new Set([
 ])
 
 const UPSTREAM = 'https://konachan.net/post.json'
+const POPULAR_ENDPOINTS = {
+  day: 'https://konachan.net/post/popular_by_day.json',
+  week: 'https://konachan.net/post/popular_by_week.json',
+  month: 'https://konachan.net/post/popular_by_month.json',
+}
 const ALLOWED_SORTS = new Map([
   ['latest', ''],
   ['popular', 'order:score'],
   ['random', 'order:random'],
 ])
 const ALLOWED_ASPECTS = new Set(['all', 'landscape', 'portrait', 'ultrawide'])
+const ALLOWED_POPULAR_PERIODS = new Set(Object.keys(POPULAR_ENDPOINTS))
 const UPSTREAM_LIMITS = {
   all: 36,
   landscape: 80,
@@ -80,6 +86,14 @@ function matchesAspect(post, aspect) {
   return true
 }
 
+function referenceDate(value) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value || '')) {
+    const parsed = new Date(`${value}T00:00:00Z`)
+    if (Number.isFinite(parsed.getTime())) return parsed
+  }
+  return new Date()
+}
+
 export default {
   async fetch(request) {
     if (request.method === 'OPTIONS') {
@@ -103,18 +117,29 @@ export default {
     const parsedLimit = Number.parseInt(url.searchParams.get('limit') || '36', 10)
     const page = Number.isFinite(parsedPage) ? Math.min(Math.max(parsedPage, 1), 1000) : 1
     const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 60) : 36
-    const sort = ALLOWED_SORTS.get(url.searchParams.get('sort') || 'latest') ?? ''
+    const requestedSort = url.searchParams.get('sort') || 'latest'
+    const sort = ALLOWED_SORTS.get(requestedSort) ?? ''
     const isRandom = sort === 'order:random'
+    const isPopular = requestedSort === 'popular'
+    const requestedPeriod = url.searchParams.get('period') || 'day'
+    const popularPeriod = ALLOWED_POPULAR_PERIODS.has(requestedPeriod) ? requestedPeriod : 'day'
     const requestedAspect = url.searchParams.get('aspect') || 'all'
     const aspect = ALLOWED_ASPECTS.has(requestedAspect) ? requestedAspect : 'all'
     const upstreamLimit = aspect === 'all' ? limit : UPSTREAM_LIMITS[aspect]
     const userTags = cleanTags(url.searchParams.get('tags') || '')
     const tags = [...userTags, 'rating:safe', sort].filter(Boolean).join(' ')
 
-    const upstreamUrl = new URL(UPSTREAM)
-    upstreamUrl.searchParams.set('page', String(page))
-    upstreamUrl.searchParams.set('limit', String(upstreamLimit))
-    upstreamUrl.searchParams.set('tags', tags)
+    const upstreamUrl = new URL(isPopular ? POPULAR_ENDPOINTS[popularPeriod] : UPSTREAM)
+    if (isPopular) {
+      const date = referenceDate(url.searchParams.get('date'))
+      upstreamUrl.searchParams.set('year', String(date.getUTCFullYear()))
+      upstreamUrl.searchParams.set('month', String(date.getUTCMonth() + 1))
+      if (popularPeriod !== 'month') upstreamUrl.searchParams.set('day', String(date.getUTCDate()))
+    } else {
+      upstreamUrl.searchParams.set('page', String(page))
+      upstreamUrl.searchParams.set('limit', String(upstreamLimit))
+      upstreamUrl.searchParams.set('tags', tags)
+    }
 
     try {
       const fetchOptions = {
@@ -142,7 +167,7 @@ export default {
       return json(request, {
         posts: safePosts.map(normalizePost),
         page,
-        hasMore: safePosts.length > 0 && posts.length >= upstreamLimit,
+        hasMore: !isPopular && safePosts.length > 0 && posts.length >= upstreamLimit,
       }, 200, isRandom ? 'no-store' : 'public, max-age=60, s-maxage=180, stale-while-revalidate=600')
     } catch {
       return json(request, { error: 'Image service unavailable' }, 503)

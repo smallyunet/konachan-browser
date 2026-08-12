@@ -3,8 +3,10 @@ import {
   ArrowDownToLine,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   ExternalLink,
   Eye,
+  Flame,
   Grid2X2,
   Heart,
   Image as ImageIcon,
@@ -24,6 +26,12 @@ const views = [
   { id: 'popular', label: 'Popular' },
   { id: 'random', label: 'Random' },
   { id: 'favorites', label: 'Favorites' },
+]
+
+const popularPeriods = [
+  { id: 'day', label: '1D' },
+  { id: 'week', label: '1W' },
+  { id: 'month', label: '1M' },
 ]
 
 const aspectOptions = [
@@ -50,6 +58,13 @@ function readSeen() {
   }
 }
 
+function localDateStamp() {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
 function App() {
   const [view, setView] = useState('latest')
   const [aspect, setAspect] = useState('all')
@@ -64,6 +79,7 @@ function App() {
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [randomKey, setRandomKey] = useState(0)
+  const [popularPeriod, setPopularPeriod] = useState('week')
   const sentinelRef = useRef(null)
   const requestGenerationRef = useRef(0)
 
@@ -87,6 +103,10 @@ function App() {
       })
       if (activeQuery) params.set('tags', activeQuery)
       if (view === 'random') params.set('shuffle', String(randomKey))
+      if (view === 'popular') {
+        params.set('period', popularPeriod)
+        params.set('date', localDateStamp())
+      }
 
       const response = await fetch(`${API_BASE}/posts?${params}`)
       if (!response.ok) throw new Error(`Request failed with ${response.status}`)
@@ -105,7 +125,7 @@ function App() {
     } finally {
       if (generation === requestGenerationRef.current) setLoading(false)
     }
-  }, [activeQuery, aspect, randomKey, view])
+  }, [activeQuery, aspect, popularPeriod, randomKey, view])
 
   useEffect(() => {
     if (view === 'favorites') return
@@ -196,7 +216,7 @@ function App() {
   const submitSearch = event => {
     event.preventDefault()
     setActiveQuery(query.trim())
-    if (view === 'favorites') setView('latest')
+    if (view === 'favorites' || view === 'popular') setView('latest')
   }
 
   return (
@@ -259,10 +279,16 @@ function App() {
                     setRandomKey(current => current + 1)
                     return
                   }
+                  if (item.id === 'popular') {
+                    setQuery('')
+                    setActiveQuery('')
+                  }
                   setView(item.id)
                 }}
                 aria-label={item.id === 'random' && view === 'random' ? 'Random, shuffle again' : item.label}
               >
+                {item.id === 'latest' && <Clock3 size={15} />}
+                {item.id === 'popular' && <Flame size={15} />}
                 {item.id === 'random' && <Shuffle size={15} />}
                 {item.id === 'favorites' && <Heart size={15} />}
                 {item.label}
@@ -271,12 +297,29 @@ function App() {
             ))}
           </div>
 
-          <div className="format-filter">
-            <SlidersHorizontal size={16} aria-hidden="true" />
-            <label className="sr-only" htmlFor="aspect-filter">Image format</label>
-            <select id="aspect-filter" value={aspect} onChange={event => setAspect(event.target.value)}>
-              {aspectOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-            </select>
+          <div className="toolbar-actions">
+            {view === 'popular' && (
+              <div className="period-filter" role="group" aria-label="Popular period">
+                {popularPeriods.map(period => (
+                  <button
+                    key={period.id}
+                    type="button"
+                    className={popularPeriod === period.id ? 'active' : ''}
+                    aria-pressed={popularPeriod === period.id}
+                    onClick={() => setPopularPeriod(period.id)}
+                  >
+                    {period.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="format-filter">
+              <SlidersHorizontal size={16} aria-hidden="true" />
+              <label className="sr-only" htmlFor="aspect-filter">Image format</label>
+              <select id="aspect-filter" value={aspect} onChange={event => setAspect(event.target.value)}>
+                {aspectOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+            </div>
           </div>
         </section>
 
