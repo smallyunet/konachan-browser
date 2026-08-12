@@ -7,10 +7,11 @@ const ALLOWED_ORIGINS = new Set([
 const UPSTREAM = 'https://konachan.net/post.json'
 const TAGS_UPSTREAM = 'https://konachan.net/tag.json'
 const RELATED_TAGS_UPSTREAM = 'https://konachan.net/tag/related.json'
-const POPULAR_ENDPOINTS = {
-  day: 'https://konachan.net/post/popular_by_day.json',
-  week: 'https://konachan.net/post/popular_by_week.json',
-  month: 'https://konachan.net/post/popular_by_month.json',
+const POPULAR_RECENT_UPSTREAM = 'https://konachan.net/post/popular_recent.json'
+const TRENDING_TAG_ENDPOINTS = {
+  day: 'https://konachan.net/tag/popular_by_day',
+  week: 'https://konachan.net/tag/popular_by_week',
+  month: 'https://konachan.net/tag/popular_by_month',
 }
 const ALLOWED_SORTS = new Map([
   ['latest', ''],
@@ -18,7 +19,8 @@ const ALLOWED_SORTS = new Map([
   ['random', 'order:random'],
 ])
 const ALLOWED_ASPECTS = new Set(['all', 'landscape', 'portrait', 'ultrawide'])
-const ALLOWED_POPULAR_PERIODS = new Set(Object.keys(POPULAR_ENDPOINTS))
+const ALLOWED_POPULAR_PERIODS = new Set(['1d', '1w', '1m', '1y'])
+const ALLOWED_TRENDING_TAG_PERIODS = new Set(Object.keys(TRENDING_TAG_ENDPOINTS))
 const UPSTREAM_LIMITS = {
   all: 36,
   landscape: 80,
@@ -110,6 +112,33 @@ function normalizeTag(tag) {
   return { name, count, type: Number(tag.type) || 0 }
 }
 
+function parseTrendingTags(html, limit) {
+  const tagList = String(html || '').match(/<div\s+id=["']tag-list["'][^>]*>([\s\S]*?)<\/div>/i)?.[1] || ''
+  const anchors = tagList.matchAll(/<a\b([^>]*)>([^<]*)<\/a>/gi)
+  const tags = []
+
+  for (const [, attributes] of anchors) {
+    const title = attributes.match(/\btitle=["']([^"']+)["']/i)?.[1] || ''
+    const href = attributes.match(/\bhref=["']([^"']+)["']/i)?.[1] || ''
+    const countMatch = title.match(/^([\d,]+)\s+posts?$/i)
+    if (!countMatch || !href.startsWith('/post?')) continue
+
+    try {
+      const upstreamUrl = new URL(href.replaceAll('&amp;', '&'), 'https://konachan.net')
+      const name = upstreamUrl.searchParams.get('tags') || ''
+      const count = Number(countMatch[1].replaceAll(',', ''))
+      if (!name || name.includes(' ') || !Number.isFinite(count) || count <= 0) continue
+      tags.push({ name, count, type: 0 })
+    } catch {
+      // Ignore malformed upstream tag links.
+    }
+  }
+
+  return tags
+    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+    .slice(0, limit)
+}
+
 async function fetchUpstream(url, cacheTtl = 300) {
   return fetch(url, {
     headers: { 'User-Agent': 'KonaView/0.1 (+https://github.com/smallyunet/konaview)' },
@@ -172,6 +201,40 @@ async function handleRelatedTags(request, url) {
   }
 }
 
+async function handleTagRankings(request, url) {
+  const mode = url.searchParams.get('mode') === 'top' ? 'top' : 'trending'
+  const requestedLimit = Number.parseInt(url.searchParams.get('limit') || '60', 10)
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 60
+
+  if (mode === 'top') {
+    const upstreamUrl = new URL(TAGS_UPSTREAM)
+    upstreamUrl.searchParams.set('order', 'count')
+    upstreamUrl.searchParams.set('limit', String(limit))
+
+    try {
+      const response = await fetchUpstream(upstreamUrl, 3600)
+      if (!response.ok) return json(request, { error: 'Upstream request failed' }, 502)
+      const payload = await response.json()
+      const tags = Array.isArray(payload) ? payload.map(normalizeTag).filter(Boolean).slice(0, limit) : []
+      return json(request, { mode, tags }, 200, 'public, max-age=900, s-maxage=3600, stale-while-revalidate=7200')
+    } catch {
+      return json(request, { error: 'Tag ranking service unavailable' }, 503)
+    }
+  }
+
+  const requestedPeriod = url.searchParams.get('period') || 'day'
+  const period = ALLOWED_TRENDING_TAG_PERIODS.has(requestedPeriod) ? requestedPeriod : 'day'
+
+  try {
+    const response = await fetchUpstream(new URL(TRENDING_TAG_ENDPOINTS[period]), 1800)
+    if (!response.ok) return json(request, { error: 'Upstream request failed' }, 502)
+    const tags = parseTrendingTags(await response.text(), limit)
+    return json(request, { mode, period, tags }, 200, 'public, max-age=600, s-maxage=1800, stale-while-revalidate=3600')
+  } catch {
+    return json(request, { error: 'Tag ranking service unavailable' }, 503)
+  }
+}
+
 function matchesAspect(post, aspect) {
   if (aspect === 'all') return true
   const ratio = Number(post.width) / Number(post.height)
@@ -180,14 +243,6 @@ function matchesAspect(post, aspect) {
   if (aspect === 'portrait') return ratio < 0.9
   if (aspect === 'ultrawide') return ratio >= 1.75
   return true
-}
-
-function referenceDate(value) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value || '')) {
-    const parsed = new Date(`${value}T00:00:00Z`)
-    if (Number.isFinite(parsed.getTime())) return parsed
-  }
-  return new Date()
 }
 
 export default {
@@ -207,6 +262,7 @@ export default {
 
     if (url.pathname === '/tags') return handleTagSuggestions(request, url)
     if (url.pathname === '/related') return handleRelatedTags(request, url)
+    if (url.pathname === '/tag-rankings') return handleTagRankings(request, url)
 
     if (url.pathname !== '/posts') {
       return json(request, { error: 'Not found' }, 404)
@@ -220,20 +276,17 @@ export default {
     const sort = ALLOWED_SORTS.get(requestedSort) ?? ''
     const isRandom = sort === 'order:random'
     const isPopular = requestedSort === 'popular'
-    const requestedPeriod = url.searchParams.get('period') || 'day'
-    const popularPeriod = ALLOWED_POPULAR_PERIODS.has(requestedPeriod) ? requestedPeriod : 'day'
+    const requestedPeriod = url.searchParams.get('period') || '1d'
+    const popularPeriod = ALLOWED_POPULAR_PERIODS.has(requestedPeriod) ? requestedPeriod : '1d'
     const requestedAspect = url.searchParams.get('aspect') || 'all'
     const aspect = ALLOWED_ASPECTS.has(requestedAspect) ? requestedAspect : 'all'
     const upstreamLimit = aspect === 'all' ? limit : UPSTREAM_LIMITS[aspect]
     const userTags = cleanTags(url.searchParams.get('tags') || '')
     const tags = [...userTags, 'rating:safe', sort].filter(Boolean).join(' ')
 
-    const upstreamUrl = new URL(isPopular ? POPULAR_ENDPOINTS[popularPeriod] : UPSTREAM)
+    const upstreamUrl = new URL(isPopular ? POPULAR_RECENT_UPSTREAM : UPSTREAM)
     if (isPopular) {
-      const date = referenceDate(url.searchParams.get('date'))
-      upstreamUrl.searchParams.set('year', String(date.getUTCFullYear()))
-      upstreamUrl.searchParams.set('month', String(date.getUTCMonth() + 1))
-      if (popularPeriod !== 'month') upstreamUrl.searchParams.set('day', String(date.getUTCDate()))
+      upstreamUrl.searchParams.set('period', popularPeriod)
     } else {
       upstreamUrl.searchParams.set('page', String(page))
       upstreamUrl.searchParams.set('limit', String(upstreamLimit))

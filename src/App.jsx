@@ -15,6 +15,8 @@ import {
   Shuffle,
   SlidersHorizontal,
   Sparkles,
+  Tags,
+  Trophy,
   X,
 } from 'lucide-react'
 
@@ -28,10 +30,18 @@ const views = [
   { id: 'latest', label: 'Latest' },
   { id: 'popular', label: 'Popular' },
   { id: 'random', label: 'Random' },
+  { id: 'tags', label: 'Tags' },
   { id: 'favorites', label: 'Favorites' },
 ]
 
 const popularPeriods = [
+  { id: '1d', label: '1D' },
+  { id: '1w', label: '1W' },
+  { id: '1m', label: '1M' },
+  { id: '1y', label: '1Y' },
+]
+
+const trendingTagPeriods = [
   { id: 'day', label: '1D' },
   { id: 'week', label: '1W' },
   { id: 'month', label: '1M' },
@@ -67,13 +77,6 @@ function readHideSeen() {
   } catch {
     return true
   }
-}
-
-function localDateStamp() {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
 }
 
 function formatBytes(value) {
@@ -123,7 +126,12 @@ function App() {
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [randomKey, setRandomKey] = useState(0)
-  const [popularPeriod, setPopularPeriod] = useState('week')
+  const [popularPeriod, setPopularPeriod] = useState('1w')
+  const [tagRankingMode, setTagRankingMode] = useState('trending')
+  const [trendingTagPeriod, setTrendingTagPeriod] = useState('week')
+  const [rankedTags, setRankedTags] = useState([])
+  const [rankedTagsLoading, setRankedTagsLoading] = useState(false)
+  const [rankedTagsError, setRankedTagsError] = useState('')
   const [tagSuggestions, setTagSuggestions] = useState([])
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
@@ -131,7 +139,7 @@ function App() {
   const requestGenerationRef = useRef(0)
 
   const fetchPosts = useCallback(async (nextPage, replace = false) => {
-    if (view === 'favorites') return
+    if (view === 'favorites' || view === 'tags') return
     const generation = replace ? requestGenerationRef.current + 1 : requestGenerationRef.current
     if (replace) {
       requestGenerationRef.current = generation
@@ -152,7 +160,6 @@ function App() {
       if (view === 'random') params.set('shuffle', String(randomKey))
       if (view === 'popular') {
         params.set('period', popularPeriod)
-        params.set('date', localDateStamp())
       }
 
       const response = await fetch(`${API_BASE}/posts?${params}`)
@@ -175,14 +182,14 @@ function App() {
   }, [activeQuery, aspect, popularPeriod, randomKey, view])
 
   useEffect(() => {
-    if (view === 'favorites') return
+    if (view === 'favorites' || view === 'tags') return
     setPage(1)
     setHasMore(true)
     fetchPosts(1, true)
   }, [fetchPosts, view])
 
   useEffect(() => {
-    if (!sentinelRef.current || loading || !hasMore || view === 'favorites') return
+    if (!sentinelRef.current || loading || !hasMore || view === 'favorites' || view === 'tags') return
     const observer = new IntersectionObserver(entries => {
       if (!entries[0].isIntersecting) return
       const nextPage = page + 1
@@ -192,6 +199,35 @@ function App() {
     observer.observe(sentinelRef.current)
     return () => observer.disconnect()
   }, [fetchPosts, hasMore, loading, page, view])
+
+  const fetchRankedTags = useCallback(async signal => {
+    setRankedTagsLoading(true)
+    setRankedTagsError('')
+    setRankedTags([])
+
+    try {
+      const params = new URLSearchParams({ mode: tagRankingMode, limit: '60' })
+      if (tagRankingMode === 'trending') params.set('period', trendingTagPeriod)
+      const response = await fetch(`${API_BASE}/tag-rankings?${params}`, { signal })
+      if (!response.ok) throw new Error(`Request failed with ${response.status}`)
+      const data = await response.json()
+      setRankedTags(Array.isArray(data.tags) ? data.tags : [])
+    } catch (fetchError) {
+      if (fetchError.name !== 'AbortError') {
+        setRankedTags([])
+        setRankedTagsError('KonaView could not load tag rankings. Please try again in a moment.')
+      }
+    } finally {
+      if (!signal.aborted) setRankedTagsLoading(false)
+    }
+  }, [tagRankingMode, trendingTagPeriod])
+
+  useEffect(() => {
+    if (view !== 'tags') return undefined
+    const controller = new AbortController()
+    fetchRankedTags(controller.signal)
+    return () => controller.abort()
+  }, [fetchRankedTags, view])
 
   useEffect(() => {
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites))
@@ -437,7 +473,7 @@ function App() {
                     setRandomKey(current => current + 1)
                     return
                   }
-                  if (item.id === 'popular') {
+                  if (item.id === 'popular' || item.id === 'tags') {
                     setQuery('')
                     setActiveQuery('')
                   }
@@ -448,6 +484,7 @@ function App() {
                 {item.id === 'latest' && <Clock3 size={15} />}
                 {item.id === 'popular' && <Flame size={15} />}
                 {item.id === 'random' && <Shuffle size={15} />}
+                {item.id === 'tags' && <Tags size={15} />}
                 {item.id === 'favorites' && <Heart size={15} />}
                 {item.label}
                 {item.id === 'favorites' && favorites.length > 0 && <span className="count">{favorites.length}</span>}
@@ -471,7 +508,44 @@ function App() {
                 ))}
               </div>
             )}
-            {view !== 'favorites' && (
+            {view === 'tags' && (
+              <>
+                <div className="period-filter" role="group" aria-label="Tag ranking">
+                  <button
+                    type="button"
+                    className={tagRankingMode === 'trending' ? 'active' : ''}
+                    aria-pressed={tagRankingMode === 'trending'}
+                    onClick={() => setTagRankingMode('trending')}
+                  >
+                    Trending
+                  </button>
+                  <button
+                    type="button"
+                    className={tagRankingMode === 'top' ? 'active' : ''}
+                    aria-pressed={tagRankingMode === 'top'}
+                    onClick={() => setTagRankingMode('top')}
+                  >
+                    Top
+                  </button>
+                </div>
+                {tagRankingMode === 'trending' && (
+                  <div className="period-filter" role="group" aria-label="Trending tags period">
+                    {trendingTagPeriods.map(period => (
+                      <button
+                        key={period.id}
+                        type="button"
+                        className={trendingTagPeriod === period.id ? 'active' : ''}
+                        aria-pressed={trendingTagPeriod === period.id}
+                        onClick={() => setTrendingTagPeriod(period.id)}
+                      >
+                        {period.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {view !== 'favorites' && view !== 'tags' && (
               <button
                 type="button"
                 className={`seen-filter ${hideSeen ? 'active' : ''}`}
@@ -484,17 +558,19 @@ function App() {
                 {hideSeen && hiddenSeenCount > 0 && <span className="count">{hiddenSeenCount}</span>}
               </button>
             )}
-            <div className="format-filter">
-              <SlidersHorizontal size={16} aria-hidden="true" />
-              <label className="sr-only" htmlFor="aspect-filter">Image format</label>
-              <select id="aspect-filter" value={aspect} onChange={event => setAspect(event.target.value)}>
-                {aspectOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-              </select>
-            </div>
+            {view !== 'tags' && (
+              <div className="format-filter">
+                <SlidersHorizontal size={16} aria-hidden="true" />
+                <label className="sr-only" htmlFor="aspect-filter">Image format</label>
+                <select id="aspect-filter" value={aspect} onChange={event => setAspect(event.target.value)}>
+                  {aspectOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              </div>
+            )}
           </div>
         </section>
 
-        {activeQuery && (
+        {view !== 'tags' && activeQuery && (
           <div className="query-banner">
             <span>Showing results for</span>
             <strong>{activeQuery.replaceAll('_', ' ')}</strong>
@@ -502,7 +578,61 @@ function App() {
           </div>
         )}
 
-        {error && (
+        {view === 'tags' && (
+          <section className="tag-explorer" aria-labelledby="tag-explorer-title">
+            <header className="tag-explorer-header">
+              <div>
+                <p className="eyebrow"><span></span>{tagRankingMode === 'trending' ? 'What is rising now' : 'All-time index'}</p>
+                <h2 id="tag-explorer-title">{tagRankingMode === 'trending' ? 'Trending Tags' : 'Top Tags'}</h2>
+                <p>{tagRankingMode === 'trending'
+                  ? 'Popular tags in Konachan uploads during the selected period.'
+                  : 'The most-used tags across the complete Konachan catalog.'}</p>
+              </div>
+              {tagRankingMode === 'top' ? <Trophy size={30} aria-hidden="true" /> : <Flame size={30} aria-hidden="true" />}
+            </header>
+
+            {rankedTagsError && (
+              <div className="state-card error-state">
+                <Tags size={24} />
+                <p>{rankedTagsError}</p>
+                <button type="button" onClick={() => fetchRankedTags(new AbortController().signal)}>Try again</button>
+              </div>
+            )}
+
+            {!rankedTagsError && rankedTagsLoading && rankedTags.length === 0 && (
+              <div className="tag-ranking-skeleton" aria-label="Loading tag rankings" aria-busy="true">
+                {Array.from({ length: 12 }, (_, index) => <span key={index}></span>)}
+              </div>
+            )}
+
+            {!rankedTagsError && rankedTags.length > 0 && (
+              <ol className="tag-ranking-grid" aria-live="polite">
+                {rankedTags.map((tag, index) => (
+                  <li key={tag.name}>
+                    <button type="button" onClick={() => searchFor(tag.name)} aria-label={`Search for ${tag.name.replaceAll('_', ' ')}`}>
+                      <span className="tag-rank">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="tag-ranking-copy">
+                        <strong>{tag.name.replaceAll('_', ' ')}</strong>
+                        <small>{tag.count.toLocaleString()} {tagRankingMode === 'top' ? 'total ' : ''}posts</small>
+                      </span>
+                      <ChevronRight size={17} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+
+            {!rankedTagsLoading && !rankedTagsError && rankedTags.length === 0 && (
+              <div className="state-card">
+                <Tags size={24} />
+                <h2>No tags found</h2>
+                <p>Try another ranking or time period.</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {view !== 'tags' && error && (
           <div className="state-card error-state">
             <ImageIcon size={24} />
             <p>{error}</p>
@@ -510,7 +640,7 @@ function App() {
           </div>
         )}
 
-        {!error && visiblePosts.length > 0 && (
+        {view !== 'tags' && !error && visiblePosts.length > 0 && (
           <div className="gallery-batches" aria-live="polite" aria-label="Wallpaper gallery">
             {visibleBatches.map((batch, batchIndex) => (
               <section className="masonry" key={`${view}-${aspect}-${activeQuery}-${batchIndex}`} aria-label={`Wallpaper batch ${batchIndex + 1}`}>
@@ -552,28 +682,36 @@ function App() {
           </div>
         )}
 
-        {!loading && !error && visiblePosts.length === 0 && (
+        {view !== 'tags' && !loading && !error && visiblePosts.length === 0 && (
           <div className="state-card">
             <Grid2X2 size={24} />
-            <h2>{view === 'favorites' ? 'Your collection starts here' : hiddenSeenCount > 0 ? "You're all caught up" : 'No wallpapers found'}</h2>
+            <h2>{view === 'favorites'
+              ? 'Your collection starts here'
+              : hiddenSeenCount > 0
+                ? "You're all caught up"
+                : view === 'popular'
+                  ? 'No Safe wallpapers in this period'
+                  : 'No wallpapers found'}</h2>
             <p>{view === 'favorites'
               ? 'Tap the heart on any wallpaper to keep it close.'
               : hiddenSeenCount > 0
                 ? `${hiddenSeenCount} seen ${hiddenSeenCount === 1 ? 'wallpaper is' : 'wallpapers are'} hidden.`
-                : 'Try a different tag or image format.'}</p>
+                : view === 'popular'
+                  ? "Konachan's official rolling list has no Safe-rated results for this window."
+                  : 'Try a different tag or image format.'}</p>
             {view !== 'favorites' && hiddenSeenCount > 0 && (
               <button type="button" onClick={() => setHideSeen(false)}>Show seen</button>
             )}
           </div>
         )}
 
-        {loading && visiblePosts.length === 0 && (
+        {view !== 'tags' && loading && visiblePosts.length === 0 && (
           <section className={`skeleton-grid ${aspect}`} aria-label={`Loading ${aspect} wallpapers`} aria-busy="true">
             {Array.from({ length: 12 }, (_, index) => <span key={index}></span>)}
           </section>
         )}
 
-        {loading && visiblePosts.length > 0 && (
+        {view !== 'tags' && loading && visiblePosts.length > 0 && (
           <div className="loading-row" role="status">
             <span className="spinner"></span> Loading more artwork…
           </div>

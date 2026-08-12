@@ -363,6 +363,88 @@ main {
 .query-banner strong { color: #ffd0bb; }
 .query-banner button { margin-left: auto; color: #fff; background: none; border: 0; text-decoration: underline; }
 
+.tag-explorer { padding-top: clamp(28px, 4vw, 52px); }
+
+.tag-explorer-header {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.tag-explorer-header .eyebrow { margin-bottom: 10px; }
+.tag-explorer-header h2 {
+  margin: 0;
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(32px, 5vw, 52px);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.tag-explorer-header p:last-child { margin: 12px 0 0; color: var(--text-muted); }
+.tag-explorer-header > svg { flex: 0 0 auto; color: var(--accent); }
+
+.tag-ranking-grid {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  list-style: none;
+}
+
+.tag-ranking-grid button {
+  width: 100%;
+  min-height: 76px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: #d7d4dd;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  text-align: left;
+  transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.tag-ranking-grid button:hover {
+  color: #fff;
+  border-color: rgba(255, 122, 69, 0.35);
+  background: var(--accent-soft);
+  transform: translateY(-1px);
+}
+
+.tag-rank {
+  color: #6f6c77;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.tag-ranking-copy { min-width: 0; display: grid; gap: 3px; }
+.tag-ranking-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.tag-ranking-copy small { color: #85828e; font-size: 12px; font-variant-numeric: tabular-nums; }
+.tag-ranking-grid button > svg { color: #66636d; }
+
+.tag-ranking-skeleton {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tag-ranking-skeleton span {
+  min-height: 76px;
+  border-radius: 14px;
+  background: linear-gradient(105deg, rgba(255, 255, 255, 0.035) 35%, rgba(255, 255, 255, 0.075) 48%, rgba(255, 255, 255, 0.035) 61%);
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
 .masonry {
   padding-top: 30px;
   column-count: 4;
@@ -678,6 +760,7 @@ footer {
 @media (max-width: 1120px) {
   .masonry { column-count: 3; }
   .skeleton-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tag-ranking-grid, .tag-ranking-skeleton { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { grid-template-columns: auto 1fr auto; }
   .lightbox-panel { grid-template-columns: 1fr; overflow-y: auto; }
   .lightbox-meta { border-top: 1px solid var(--line); border-left: 0; }
@@ -697,6 +780,7 @@ footer {
   .toolbar-actions { min-height: 52px; padding: 4px 0; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; border-top: 1px solid var(--line); }
   .format-filter { min-height: 52px; justify-content: flex-end; }
   .period-filter { margin-left: 2px; }
+  .tag-explorer-header { align-items: flex-start; }
   .masonry { padding-top: 14px; column-count: 2; column-gap: 10px; }
   .gallery-batches .masonry + .masonry { margin-top: 10px; }
   .skeleton-grid { padding-top: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -715,7 +799,11 @@ footer {
 @media (max-width: 420px) {
   .masonry { column-count: 1; }
   .wallpaper-card { border-radius: 14px; }
-  .view-tabs { justify-content: space-between; gap: 12px; }
+  .view-tabs { justify-content: space-between; gap: 4px; overflow-x: hidden; }
+  .view-tabs button { flex: 1 1 0; min-width: 0; font-size: 12px; }
+  .view-tabs button > svg { display: none; }
+  .tag-ranking-grid, .tag-ranking-skeleton { grid-template-columns: 1fr; }
+  .tag-explorer-header > svg { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -5,7 +5,9 @@ A modern, focused browsing experience for high-resolution anime wallpapers from 
 ## What it includes
 
 - Responsive masonry browsing
-- Latest, popular, and random feeds
+- Latest, random, and rolling popular feeds from 1 day to 1 year
+- Daily, weekly, and monthly trending tags
+- All-time top tags by catalog usage
 - Tag search and aspect-ratio filters
 - Keyboard-friendly immersive viewer
 - Device-local favorites
