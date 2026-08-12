@@ -746,16 +746,14 @@ function App() {
         )}
 
         {view !== 'tags' && !error && visiblePosts.length > 0 && (
-          <div className={`gallery-batches ${hoverPreview ? 'hover-preview-enabled' : ''}`} aria-live="polite" aria-label="Wallpaper gallery">
+          <div className={`gallery-batches ${hoverPreview ? 'hover-preview-enabled' : ''} ${showCardDetails ? 'card-details-enabled' : ''}`} aria-live="polite" aria-label="Wallpaper gallery">
             <section className="masonry" aria-label="Wallpapers">
               {visiblePosts.map(post => (
                 <article
                   className={`wallpaper-card ${seenSet.has(post.id) ? 'seen' : ''}`}
                   key={post.id}
-                  onMouseEnter={event => {
-                    positionHoverPreview(event)
-                    markSeen(post.id)
-                  }}
+                  onMouseEnter={positionHoverPreview}
+                  onMouseLeave={() => markSeen(post.id)}
                 >
                   <button
                     type="button"

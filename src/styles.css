@@ -512,6 +512,8 @@ main {
     box-shadow: 0 26px 70px rgba(0, 0, 0, 0.58);
     transition-delay: 160ms;
   }
+
+  .gallery-batches:not(.card-details-enabled) .favorite-button { display: none; }
 }
 
 .image-button {
