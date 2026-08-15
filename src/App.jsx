@@ -30,6 +30,7 @@ const HIDE_SEEN_KEY = 'konaview:hide-seen'
 const HOVER_PREVIEW_KEY = 'konaview:hover-preview'
 const CARD_DETAILS_KEY = 'konaview:card-details'
 const SEEN_HISTORY_LIMIT = 20_000
+const LOADING_FEEDBACK_DELAY = 300
 
 const views = [
   { id: 'latest', label: 'Latest' },
@@ -189,7 +190,10 @@ function App() {
   const [showCardDetails, setShowCardDetails] = useState(readCardDetails)
   const [seenFilterBaseline, setSeenFilterBaseline] = useState(readSeen)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(false)
+  // The first request starts in an effect, so treat the initial render as
+  // pending to avoid briefly showing the empty state before that effect runs.
+  const [loading, setLoading] = useState(true)
+  const [showLoadingFeedback, setShowLoadingFeedback] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
@@ -212,6 +216,19 @@ function App() {
     window.addEventListener('resize', updateColumnCount)
     return () => window.removeEventListener('resize', updateColumnCount)
   }, [])
+
+  useEffect(() => {
+    if (!loading) {
+      setShowLoadingFeedback(false)
+      return undefined
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowLoadingFeedback(true)
+    }, LOADING_FEEDBACK_DELAY)
+
+    return () => window.clearTimeout(timer)
+  }, [loading])
 
   const fetchPosts = useCallback(async (nextPage, replace = false) => {
     if (view === 'favorites' || view === 'tags') return
@@ -257,7 +274,11 @@ function App() {
   }, [activeQuery, aspect, popularPeriod, randomKey, view])
 
   useEffect(() => {
-    if (view === 'favorites' || view === 'tags') return
+    if (view === 'favorites' || view === 'tags') {
+      requestGenerationRef.current += 1
+      setLoading(false)
+      return
+    }
     setSeenFilterBaseline(seenIds)
     setPage(1)
     setHasMore(true)
@@ -502,7 +523,8 @@ function App() {
     fetchPosts(1, true)
   }
 
-  const refreshing = view === 'tags' ? rankedTagsLoading : view !== 'favorites' && loading
+  const refreshPending = view === 'tags' ? rankedTagsLoading : view !== 'favorites' && loading
+  const refreshing = view === 'tags' ? rankedTagsLoading : refreshPending && showLoadingFeedback
 
   return (
     <div className="app-shell">
@@ -569,7 +591,7 @@ function App() {
             type="button"
             className={`icon-button topbar-refresh ${refreshing ? 'refreshing' : ''}`}
             onClick={refreshCurrentView}
-            disabled={refreshing}
+            disabled={refreshPending}
             aria-label="Refresh current view"
             title="Refresh current view"
           >
@@ -869,12 +891,17 @@ function App() {
         )}
 
         {view !== 'tags' && loading && visiblePosts.length === 0 && (
-          <section className={`skeleton-grid ${aspect}`} aria-label={`Loading ${aspect} wallpapers`} aria-busy="true">
+          <section
+            className={`skeleton-grid ${aspect} ${showLoadingFeedback ? 'visible' : ''}`}
+            aria-label={showLoadingFeedback ? `Loading ${aspect} wallpapers` : undefined}
+            aria-busy={showLoadingFeedback ? 'true' : undefined}
+            aria-hidden={!showLoadingFeedback}
+          >
             {Array.from({ length: 12 }, (_, index) => <span key={index}></span>)}
           </section>
         )}
 
-        {view !== 'tags' && loading && visiblePosts.length > 0 && (
+        {view !== 'tags' && loading && showLoadingFeedback && visiblePosts.length > 0 && (
           <div className="loading-row" role="status">
             <span className="spinner"></span> Loading more artwork…
           </div>
