@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Info,
   RefreshCw,
+  Rows3,
   Search,
   Shuffle,
   SlidersHorizontal,
@@ -29,6 +30,7 @@ const SEEN_KEY = 'konaview:seen'
 const HIDE_SEEN_KEY = 'konaview:hide-seen'
 const HOVER_PREVIEW_KEY = 'konaview:hover-preview'
 const CARD_DETAILS_KEY = 'konaview:card-details'
+const LAYOUT_KEY = 'konaview:layout'
 const SEEN_HISTORY_LIMIT = 20_000
 const LOADING_FEEDBACK_DELAY = 300
 
@@ -98,6 +100,14 @@ function readCardDetails() {
     return localStorage.getItem(CARD_DETAILS_KEY) === 'true'
   } catch {
     return false
+  }
+}
+
+function readLayout() {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === 'single' ? 'single' : 'grid'
+  } catch {
+    return 'grid'
   }
 }
 
@@ -188,6 +198,7 @@ function App() {
   const [hideSeen, setHideSeen] = useState(readHideSeen)
   const [hoverPreview, setHoverPreview] = useState(readHoverPreview)
   const [showCardDetails, setShowCardDetails] = useState(readCardDetails)
+  const [layout, setLayout] = useState(readLayout)
   const [seenFilterBaseline, setSeenFilterBaseline] = useState(readSeen)
   const [page, setPage] = useState(1)
   // The first request starts in an effect, so treat the initial render as
@@ -349,6 +360,10 @@ function App() {
     localStorage.setItem(CARD_DETAILS_KEY, String(showCardDetails))
   }, [showCardDetails])
 
+  useEffect(() => {
+    localStorage.setItem(LAYOUT_KEY, layout)
+  }, [layout])
+
   const sourcePosts = useMemo(
     () => view === 'favorites' ? favorites : postBatches.flat(),
     [favorites, postBatches, view],
@@ -374,9 +389,10 @@ function App() {
   const hiddenSeenCount = view === 'favorites' || !hideSeen
     ? 0
     : aspectFilteredPosts.length - visiblePosts.length
+  const galleryColumnCount = layout === 'single' ? 1 : masonryColumnCount
   const masonryColumns = useMemo(
-    () => distributePostsIntoColumns(visiblePosts, masonryColumnCount),
-    [masonryColumnCount, visiblePosts],
+    () => distributePostsIntoColumns(visiblePosts, galleryColumnCount),
+    [galleryColumnCount, visiblePosts],
   )
 
   const selectedIndex = visiblePosts.findIndex(post => post.id === selectedId)
@@ -729,6 +745,20 @@ function App() {
               </button>
             )}
             {view !== 'tags' && (
+              <button
+                type="button"
+                className={`preference-toggle layout-toggle ${layout === 'single' ? 'active' : ''}`}
+                aria-pressed={layout === 'single'}
+                onClick={() => setLayout(current => current === 'single' ? 'grid' : 'single')}
+                title={`Switch to ${layout === 'single' ? 'grid' : 'single-column'} layout`}
+              >
+                {layout === 'single'
+                  ? <Rows3 size={16} aria-hidden="true" />
+                  : <Grid2X2 size={16} aria-hidden="true" />}
+                <span className="preference-label">Single column</span>
+              </button>
+            )}
+            {view !== 'tags' && (
               <div className="format-filter">
                 <SlidersHorizontal size={16} aria-hidden="true" />
                 <label className="sr-only" htmlFor="aspect-filter">Image format</label>
@@ -811,10 +841,10 @@ function App() {
         )}
 
         {view !== 'tags' && !error && visiblePosts.length > 0 && (
-          <div className={`gallery-batches ${hoverPreview ? 'hover-preview-enabled' : ''} ${showCardDetails ? 'card-details-enabled' : ''}`} aria-live="polite" aria-label="Wallpaper gallery">
+          <div className={`gallery-batches ${layout === 'single' ? 'single-column-layout' : ''} ${hoverPreview ? 'hover-preview-enabled' : ''} ${showCardDetails ? 'card-details-enabled' : ''}`} aria-live="polite" aria-label="Wallpaper gallery">
             <section
-              className="masonry"
-              style={{ '--masonry-column-count': masonryColumnCount }}
+              className={`masonry ${layout === 'single' ? 'single-column' : ''}`}
+              style={{ '--masonry-column-count': galleryColumnCount }}
               aria-label="Wallpapers"
             >
               {masonryColumns.map((column, columnIndex) => (
@@ -892,7 +922,7 @@ function App() {
 
         {view !== 'tags' && loading && visiblePosts.length === 0 && (
           <section
-            className={`skeleton-grid ${aspect} ${showLoadingFeedback ? 'visible' : ''}`}
+            className={`skeleton-grid ${layout === 'single' ? 'single-column' : ''} ${aspect} ${showLoadingFeedback ? 'visible' : ''}`}
             aria-label={showLoadingFeedback ? `Loading ${aspect} wallpapers` : undefined}
             aria-busy={showLoadingFeedback ? 'true' : undefined}
             aria-hidden={!showLoadingFeedback}
