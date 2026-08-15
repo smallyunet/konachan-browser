@@ -280,9 +280,12 @@ export default {
     const popularPeriod = ALLOWED_POPULAR_PERIODS.has(requestedPeriod) ? requestedPeriod : '1d'
     const requestedAspect = url.searchParams.get('aspect') || 'all'
     const aspect = ALLOWED_ASPECTS.has(requestedAspect) ? requestedAspect : 'all'
+    const parsedMinScore = Number.parseInt(url.searchParams.get('minScore') || '0', 10)
+    const minScore = Number.isFinite(parsedMinScore) ? Math.min(Math.max(parsedMinScore, 0), 10_000) : 0
     const upstreamLimit = aspect === 'all' ? limit : UPSTREAM_LIMITS[aspect]
     const userTags = cleanTags(url.searchParams.get('tags') || '')
-    const tags = [...userTags, 'rating:safe', sort].filter(Boolean).join(' ')
+    const scoreTag = minScore > 0 ? `score:${minScore}..` : ''
+    const tags = [...userTags, 'rating:safe', scoreTag, sort].filter(Boolean).join(' ')
 
     const upstreamUrl = new URL(isPopular ? POPULAR_RECENT_UPSTREAM : UPSTREAM)
     if (isPopular) {
@@ -312,6 +315,7 @@ export default {
           post.rating === 's'
           && post.status !== 'pending'
           && post.is_shown_in_index !== false
+          && (Number(post.score) || 0) >= minScore
           && matchesAspect(post, aspect)
         ))
         : []

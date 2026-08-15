@@ -382,6 +382,14 @@ main {
   cursor: pointer;
 }
 
+.score-filter label {
+  color: #85828e;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.score-filter select { padding-left: 2px; }
+
 .query-banner {
   margin: 24px 0 0;
   padding: 13px 16px;

@@ -8,7 +8,7 @@ A modern, focused browsing experience for high-resolution anime wallpapers from 
 - Latest, random, and rolling popular feeds from 1 day to 1 year
 - Daily, weekly, and monthly trending tags
 - All-time top tags by catalog usage
-- Tag search and aspect-ratio filters
+- Tag search, minimum-score filtering, and aspect-ratio filters
 - Keyboard-friendly immersive viewer
 - Device-local favorites
 - Automatic device-local seen history

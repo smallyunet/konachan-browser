@@ -65,6 +65,15 @@ const aspectOptions = [
   { id: 'ultrawide', label: 'Ultrawide' },
 ]
 
+const scoreOptions = [
+  { value: 0, label: 'Any' },
+  { value: 10, label: '10+' },
+  { value: 25, label: '25+' },
+  { value: 50, label: '50+' },
+  { value: 100, label: '100+' },
+  { value: 250, label: '250+' },
+]
+
 function readFavorites() {
   try {
     return JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]')
@@ -213,6 +222,7 @@ function distributePostsIntoColumns(posts, columnCount) {
 function App() {
   const [view, setView] = useState('latest')
   const [aspect, setAspect] = useState('all')
+  const [minScore, setMinScore] = useState(0)
   const [query, setQuery] = useState('')
   const [activeQuery, setActiveQuery] = useState('')
   const [postBatches, setPostBatches] = useState([])
@@ -297,6 +307,7 @@ function App() {
         aspect,
       })
       if (activeQuery) params.set('tags', activeQuery)
+      if (minScore > 0) params.set('minScore', String(minScore))
       if (view === 'random') params.set('shuffle', String(randomKey))
       if (view === 'popular') {
         params.set('period', popularPeriod)
@@ -319,7 +330,7 @@ function App() {
     } finally {
       if (generation === requestGenerationRef.current) setLoading(false)
     }
-  }, [activeQuery, aspect, popularPeriod, randomKey, view])
+  }, [activeQuery, aspect, minScore, popularPeriod, randomKey, view])
 
   useEffect(() => {
     if (view === 'favorites' || view === 'tags') {
@@ -405,13 +416,17 @@ function App() {
     () => view === 'favorites' ? favorites : postBatches.flat(),
     [favorites, postBatches, view],
   )
-  const aspectFilteredPosts = useMemo(() => sourcePosts.filter(post => {
+  const scoreFilteredPosts = useMemo(
+    () => minScore > 0 ? sourcePosts.filter(post => post.score >= minScore) : sourcePosts,
+    [minScore, sourcePosts],
+  )
+  const aspectFilteredPosts = useMemo(() => scoreFilteredPosts.filter(post => {
     const ratio = post.width / post.height
     if (aspect === 'landscape') return ratio >= 1.2
     if (aspect === 'portrait') return ratio < 0.9
     if (aspect === 'ultrawide') return ratio >= 1.75
     return true
-  }), [aspect, sourcePosts])
+  }), [aspect, scoreFilteredPosts])
   const seenSet = useMemo(() => new Set(seenIds), [seenIds])
   const filteredSeenSet = useMemo(
     () => new Set(seenFilterBaseline),
@@ -836,6 +851,15 @@ function App() {
               </button>
             )}
             {view !== 'tags' && (
+              <div className="format-filter score-filter">
+                <Trophy size={16} aria-hidden="true" />
+                <label htmlFor="score-filter">Score</label>
+                <select id="score-filter" value={minScore} onChange={event => setMinScore(Number(event.target.value))}>
+                  {scoreOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+            )}
+            {view !== 'tags' && (
               <div className="format-filter">
                 <SlidersHorizontal size={16} aria-hidden="true" />
                 <label className="sr-only" htmlFor="aspect-filter">Image format</label>
@@ -977,14 +1001,18 @@ function App() {
         {view !== 'tags' && !loading && !error && visiblePosts.length === 0 && (
           <div className="state-card">
             <Grid2X2 size={24} />
-            <h2>{view === 'favorites'
+            <h2>{minScore > 0
+              ? `No wallpapers score ${minScore}+`
+              : view === 'favorites'
               ? 'Your collection starts here'
               : hiddenSeenCount > 0
                 ? "You're all caught up"
                 : view === 'popular'
                   ? 'No Safe wallpapers in this period'
                   : 'No wallpapers found'}</h2>
-            <p>{view === 'favorites'
+            <p>{minScore > 0
+              ? 'Try a lower score threshold.'
+              : view === 'favorites'
               ? 'Tap the heart on any wallpaper to keep it close.'
               : hiddenSeenCount > 0
                 ? `${hiddenSeenCount} seen ${hiddenSeenCount === 1 ? 'wallpaper is' : 'wallpapers are'} hidden.`
@@ -993,6 +1021,9 @@ function App() {
                   : 'Try a different tag or image format.'}</p>
             {view !== 'favorites' && hiddenSeenCount > 0 && (
               <button type="button" onClick={() => setHideSeen(false)}>Show seen</button>
+            )}
+            {minScore > 0 && hiddenSeenCount === 0 && (
+              <button type="button" onClick={() => setMinScore(0)}>Show all scores</button>
             )}
           </div>
         )}
