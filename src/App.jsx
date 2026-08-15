@@ -12,6 +12,8 @@ import {
   Heart,
   Image as ImageIcon,
   Info,
+  Maximize2,
+  Minimize2,
   RefreshCw,
   Rows3,
   Search,
@@ -111,6 +113,17 @@ function readLayout() {
   }
 }
 
+function getFullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null
+}
+
+function canUseFullscreen() {
+  if (typeof document === 'undefined') return false
+  const enabled = document.fullscreenEnabled ?? document.webkitFullscreenEnabled
+  if (enabled === false) return false
+  return Boolean(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen)
+}
+
 function positionHoverPreview(event) {
   const card = event.currentTarget
   const bounds = card.getBoundingClientRect()
@@ -199,6 +212,8 @@ function App() {
   const [hoverPreview, setHoverPreview] = useState(readHoverPreview)
   const [showCardDetails, setShowCardDetails] = useState(readCardDetails)
   const [layout, setLayout] = useState(readLayout)
+  const [fullscreenSupported] = useState(canUseFullscreen)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [seenFilterBaseline, setSeenFilterBaseline] = useState(readSeen)
   const [page, setPage] = useState(1)
   // The first request starts in an effect, so treat the initial render as
@@ -227,6 +242,18 @@ function App() {
     window.addEventListener('resize', updateColumnCount)
     return () => window.removeEventListener('resize', updateColumnCount)
   }, [])
+
+  useEffect(() => {
+    if (!fullscreenSupported) return undefined
+    const syncFullscreenState = () => setIsFullscreen(Boolean(getFullscreenElement()))
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    document.addEventListener('webkitfullscreenchange', syncFullscreenState)
+    syncFullscreenState()
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState)
+      document.removeEventListener('webkitfullscreenchange', syncFullscreenState)
+    }
+  }, [fullscreenSupported])
 
   useEffect(() => {
     if (!loading) {
@@ -542,6 +569,22 @@ function App() {
   const refreshPending = view === 'tags' ? rankedTagsLoading : view !== 'favorites' && loading
   const refreshing = view === 'tags' ? rankedTagsLoading : refreshPending && showLoadingFeedback
 
+  const toggleFullscreen = async () => {
+    if (!fullscreenSupported) return
+    try {
+      if (getFullscreenElement()) {
+        const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen
+        await exitFullscreen?.call(document)
+        return
+      }
+      const root = document.documentElement
+      const requestFullscreen = root.requestFullscreen || root.webkitRequestFullscreen
+      await requestFullscreen?.call(root)
+    } catch {
+      // Fullscreen can still be denied by browser or embedding permissions.
+    }
+  }
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#gallery-content">Skip to gallery</a>
@@ -603,9 +646,23 @@ function App() {
         </form>
 
         <div className="topbar-end">
+          {fullscreenSupported && (
+            <button
+              type="button"
+              className={`icon-button topbar-action topbar-fullscreen ${isFullscreen ? 'active' : ''}`}
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              aria-pressed={isFullscreen}
+              title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            >
+              {isFullscreen
+                ? <Minimize2 size={17} aria-hidden="true" />
+                : <Maximize2 size={17} aria-hidden="true" />}
+            </button>
+          )}
           <button
             type="button"
-            className={`icon-button topbar-refresh ${refreshing ? 'refreshing' : ''}`}
+            className={`icon-button topbar-action topbar-refresh ${refreshing ? 'refreshing' : ''}`}
             onClick={refreshCurrentView}
             disabled={refreshPending}
             aria-label="Refresh current view"

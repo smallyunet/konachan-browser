@@ -207,7 +207,7 @@ kbd {
 
 .source-link:hover { color: #fff; }
 
-.topbar-refresh {
+.topbar-action {
   color: var(--text-muted);
   border-color: transparent;
   background: transparent;
@@ -215,10 +215,16 @@ kbd {
   transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
 }
 
-.topbar-refresh:hover:not(:disabled) {
+.topbar-action:hover:not(:disabled) {
   color: #fff;
   border-color: var(--line);
   background: rgba(255, 255, 255, 0.045);
+}
+
+.topbar-fullscreen.active {
+  color: #ffc6ae;
+  border-color: rgba(255, 122, 69, 0.24);
+  background: var(--accent-soft);
 }
 
 .topbar-refresh:disabled { cursor: wait; opacity: 0.58; }
