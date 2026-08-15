@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownToLine,
+  ArrowUp,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -122,6 +123,15 @@ function canUseFullscreen() {
   const enabled = document.fullscreenEnabled ?? document.webkitFullscreenEnabled
   if (enabled === false) return false
   return Boolean(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen)
+}
+
+function scrollToPageTop(smooth = true) {
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  window.scrollTo({
+    top: 0,
+    left: 0,
+    behavior: smooth && !reduceMotion ? 'smooth' : 'auto',
+  })
 }
 
 function positionHoverPreview(event) {
@@ -547,6 +557,7 @@ function App() {
   }
 
   const refreshCurrentView = () => {
+    scrollToPageTop(false)
     if (view === 'random') {
       setRandomKey(current => current + 1)
       return
@@ -646,6 +657,15 @@ function App() {
         </form>
 
         <div className="topbar-end">
+          <button
+            type="button"
+            className="icon-button topbar-action topbar-scroll-top"
+            onClick={() => scrollToPageTop()}
+            aria-label="Back to top"
+            title="Back to top"
+          >
+            <ArrowUp size={17} aria-hidden="true" />
+          </button>
           {fullscreenSupported && (
             <button
               type="button"
