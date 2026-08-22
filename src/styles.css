@@ -733,6 +733,7 @@ main {
 .state-card h2 { margin: 14px 0 4px; color: #fff; font-family: 'DM Serif Display', serif; font-weight: 400; }
 .state-card p { margin: 6px 0 16px; }
 .state-card button { min-height: 44px; padding: 0 18px; color: #fff; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); }
+.state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 
 footer {
   padding: 34px clamp(18px, 4vw, 64px);

@@ -36,6 +36,9 @@ const CARD_DETAILS_KEY = 'konaview:card-details'
 const LAYOUT_KEY = 'konaview:layout'
 const SEEN_HISTORY_LIMIT = 20_000
 const LOADING_FEEDBACK_DELAY = 300
+const INITIAL_VISIBLE_POST_TARGET = 12
+const AUTO_FILL_PAGE_CHUNK = 12
+const MAX_POST_PAGE = 1000
 
 const views = [
   { id: 'latest', label: 'Latest' },
@@ -236,6 +239,7 @@ function App() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [seenFilterBaseline, setSeenFilterBaseline] = useState(readSeen)
   const [page, setPage] = useState(1)
+  const [autoFillPageLimit, setAutoFillPageLimit] = useState(AUTO_FILL_PAGE_CHUNK)
   // The first request starts in an effect, so treat the initial render as
   // pending to avoid briefly showing the empty state before that effect runs.
   const [loading, setLoading] = useState(true)
@@ -274,19 +278,6 @@ function App() {
       document.removeEventListener('webkitfullscreenchange', syncFullscreenState)
     }
   }, [fullscreenSupported])
-
-  useEffect(() => {
-    if (!loading) {
-      setShowLoadingFeedback(false)
-      return undefined
-    }
-
-    const timer = window.setTimeout(() => {
-      setShowLoadingFeedback(true)
-    }, LOADING_FEEDBACK_DELAY)
-
-    return () => window.clearTimeout(timer)
-  }, [loading])
 
   const fetchPosts = useCallback(async (nextPage, replace = false) => {
     if (view === 'favorites' || view === 'tags') return
@@ -340,24 +331,13 @@ function App() {
     }
     setSeenFilterBaseline(seenIds)
     setPage(1)
+    setAutoFillPageLimit(AUTO_FILL_PAGE_CHUNK)
     setHasMore(true)
     fetchPosts(1, true)
     // Refresh the seen snapshot only when the list context changes. Newly seen
     // cards stay in place for the rest of the current browsing session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchPosts, view])
-
-  useEffect(() => {
-    if (!sentinelRef.current || loading || !hasMore || view === 'favorites' || view === 'tags') return
-    const observer = new IntersectionObserver(entries => {
-      if (!entries[0].isIntersecting) return
-      const nextPage = page + 1
-      setPage(nextPage)
-      fetchPosts(nextPage)
-    }, { rootMargin: '500px' })
-    observer.observe(sentinelRef.current)
-    return () => observer.disconnect()
-  }, [fetchPosts, hasMore, loading, page, view])
 
   const fetchRankedTags = useCallback(async signal => {
     setRankedTagsLoading(true)
@@ -441,6 +421,24 @@ function App() {
   const hiddenSeenCount = view === 'favorites' || !hideSeen
     ? 0
     : aspectFilteredPosts.length - visiblePosts.length
+  const shouldAutoFillUnseen = view !== 'favorites'
+    && view !== 'tags'
+    && !error
+    && hideSeen
+    && visiblePosts.length < INITIAL_VISIBLE_POST_TARGET
+    && hasMore
+    && page < autoFillPageLimit
+  const loadingFeedbackPending = loading || shouldAutoFillUnseen
+  const searchingPastSeen = hideSeen
+    && hiddenSeenCount > 0
+    && visiblePosts.length < INITIAL_VISIBLE_POST_TARGET
+  const unseenSearchPaused = view !== 'favorites'
+    && view !== 'tags'
+    && hideSeen
+    && visiblePosts.length === 0
+    && hasMore
+    && page >= autoFillPageLimit
+    && page < MAX_POST_PAGE
   const galleryColumnCount = layout === 'single' ? 1 : masonryColumnCount
   const masonryColumns = useMemo(
     () => distributePostsIntoColumns(visiblePosts, galleryColumnCount),
@@ -449,6 +447,48 @@ function App() {
 
   const selectedIndex = visiblePosts.findIndex(post => post.id === selectedId)
   const selectedPost = selectedIndex >= 0 ? visiblePosts[selectedIndex] : null
+
+  useEffect(() => {
+    if (!loadingFeedbackPending) {
+      setShowLoadingFeedback(false)
+      return undefined
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowLoadingFeedback(true)
+    }, LOADING_FEEDBACK_DELAY)
+
+    return () => window.clearTimeout(timer)
+  }, [loadingFeedbackPending])
+
+  useEffect(() => {
+    if (loading || !shouldAutoFillUnseen) return
+    const nextPage = page + 1
+    setPage(nextPage)
+    fetchPosts(nextPage)
+  }, [fetchPosts, loading, page, shouldAutoFillUnseen])
+
+  useEffect(() => {
+    if (
+      !sentinelRef.current
+      || loading
+      || shouldAutoFillUnseen
+      || visiblePosts.length === 0
+      || !hasMore
+      || page >= MAX_POST_PAGE
+      || error
+      || view === 'favorites'
+      || view === 'tags'
+    ) return
+    const observer = new IntersectionObserver(entries => {
+      if (!entries[0].isIntersecting) return
+      const nextPage = page + 1
+      setPage(nextPage)
+      fetchPosts(nextPage)
+    }, { rootMargin: '500px' })
+    observer.observe(sentinelRef.current)
+    return () => observer.disconnect()
+  }, [error, fetchPosts, hasMore, loading, page, shouldAutoFillUnseen, view, visiblePosts.length])
 
   const openViewer = postId => setSelectedId(postId)
 
@@ -465,6 +505,10 @@ function App() {
   const toggleHideSeen = () => {
     if (!hideSeen) setSeenFilterBaseline(seenIds)
     setHideSeen(current => !current)
+  }
+
+  const continueUnseenSearch = () => {
+    setAutoFillPageLimit(current => Math.min(current + AUTO_FILL_PAGE_CHUNK, MAX_POST_PAGE))
   }
 
   useEffect(() => {
@@ -998,13 +1042,15 @@ function App() {
           </div>
         )}
 
-        {view !== 'tags' && !loading && !error && visiblePosts.length === 0 && (
+        {view !== 'tags' && !loadingFeedbackPending && !error && visiblePosts.length === 0 && (
           <div className="state-card">
             <Grid2X2 size={24} />
             <h2>{minScore > 0
               ? `No wallpapers score ${minScore}+`
               : view === 'favorites'
               ? 'Your collection starts here'
+              : unseenSearchPaused
+                ? 'No unseen wallpapers nearby'
               : hiddenSeenCount > 0
                 ? "You're all caught up"
                 : view === 'popular'
@@ -1014,24 +1060,35 @@ function App() {
               ? 'Try a lower score threshold.'
               : view === 'favorites'
               ? 'Tap the heart on any wallpaper to keep it close.'
+              : unseenSearchPaused
+                ? `The first ${page} pages are already in your seen history.`
               : hiddenSeenCount > 0
                 ? `${hiddenSeenCount} seen ${hiddenSeenCount === 1 ? 'wallpaper is' : 'wallpapers are'} hidden.`
                 : view === 'popular'
                   ? "Konachan's official rolling list has no Safe-rated results for this window."
                   : 'Try a different tag or image format.'}</p>
-            {view !== 'favorites' && hiddenSeenCount > 0 && (
-              <button type="button" onClick={() => setHideSeen(false)}>Show seen</button>
-            )}
-            {minScore > 0 && hiddenSeenCount === 0 && (
-              <button type="button" onClick={() => setMinScore(0)}>Show all scores</button>
+            {(unseenSearchPaused || (view !== 'favorites' && hiddenSeenCount > 0) || (minScore > 0 && hiddenSeenCount === 0)) && (
+              <div className="state-actions">
+                {unseenSearchPaused && (
+                  <button type="button" onClick={continueUnseenSearch}>Continue searching</button>
+                )}
+                {view !== 'favorites' && hiddenSeenCount > 0 && (
+                  <button type="button" onClick={() => setHideSeen(false)}>Show seen</button>
+                )}
+                {minScore > 0 && hiddenSeenCount === 0 && (
+                  <button type="button" onClick={() => setMinScore(0)}>Show all scores</button>
+                )}
+              </div>
             )}
           </div>
         )}
 
-        {view !== 'tags' && loading && visiblePosts.length === 0 && (
+        {view !== 'tags' && loadingFeedbackPending && visiblePosts.length === 0 && (
           <section
             className={`skeleton-grid ${layout === 'single' ? 'single-column' : ''} ${aspect} ${showLoadingFeedback ? 'visible' : ''}`}
-            aria-label={showLoadingFeedback ? `Loading ${aspect} wallpapers` : undefined}
+            aria-label={showLoadingFeedback
+              ? searchingPastSeen ? 'Searching past seen wallpapers' : `Loading ${aspect} wallpapers`
+              : undefined}
             aria-busy={showLoadingFeedback ? 'true' : undefined}
             aria-hidden={!showLoadingFeedback}
           >
@@ -1039,9 +1096,9 @@ function App() {
           </section>
         )}
 
-        {view !== 'tags' && loading && showLoadingFeedback && visiblePosts.length > 0 && (
+        {view !== 'tags' && loadingFeedbackPending && showLoadingFeedback && visiblePosts.length > 0 && (
           <div className="loading-row" role="status">
-            <span className="spinner"></span> Loading more artwork…
+            <span className="spinner"></span> {searchingPastSeen ? 'Searching past seen wallpapers…' : 'Loading more artwork…'}
           </div>
         )}
         <div ref={sentinelRef} className="sentinel" aria-hidden="true"></div>
